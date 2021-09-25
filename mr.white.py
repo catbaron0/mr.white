@@ -98,5 +98,4 @@ async def on_message(message):
 
 bot.add_cog(Streamer(bot))
 
-# bot.run('ODIwMjE0MDcyNDY0NjM3OTcy.YEx54Q.EEqHGrElcTvgzHDXH5AGmOYISmg')
 bot.run(sys.argv[1])
