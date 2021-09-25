@@ -182,11 +182,11 @@ class MusicPlayer:
             self._guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set()))
             embed = discord.Embed(
                 title="Now playing",
-                description=f"[{music.title}]({music.web_url}) [{music.requester.mention}]",
+                description=f"[{music.title}]({music.web_url}) [{music.requester}]",
                 color=discord.Color.green()
             )
             if self.msg_np:
-                self.msg_np.delete()
+                await self.msg_np.delete()
             self.msg_np = await self._channel.send(embed=embed)
 
             await self.next.wait()
@@ -358,8 +358,10 @@ class Streamer(commands.Cog):
             await ctx.message.reply(check['info'])
             return
         player = self.get_player(ctx)
-        if 0 < pos < len(player.queue):
+        if 0 < pos <= len(player.queue):
+            music = player.queue.pop(pos - 1)
             player.queue.insert(0, player.queue.pop(pos - 1))
+            await ctx.message.reply(f"One music is picked: {music.title}")
         else:
             await ctx.message.reply("Invalid pos!")
 
