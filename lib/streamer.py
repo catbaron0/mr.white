@@ -358,12 +358,13 @@ class Streamer(commands.Cog):
             await ctx.message.reply(check['info'])
             return
         player = self.get_player(ctx)
-        if 0 < pos <= len(player.queue):
-            music = player.queue.pop(pos - 1)
-            player.queue.insert(0, player.queue.pop(pos - 1))
-            await ctx.message.reply(f"One music is picked: {music.title}")
-        else:
-            await ctx.message.reply("Invalid pos!")
+        async with ctx.typing():
+            if 0 < pos <= len(player.queue):
+                music = player.queue.pop(pos - 1)
+                player.queue.insert(0, player.queue.pop(pos - 1))
+                await ctx.message.reply(f"One music is picked: {music.title}")
+            else:
+                await ctx.message.reply("Invalid pos!")
 
     @commands.command(
         name='remove',
@@ -388,3 +389,17 @@ class Streamer(commands.Cog):
                 await ctx.message.reply(embed=embed)
             else:
                 await ctx.message.reply("Invalid pos!")
+
+
+    @commands.command(
+        name='clear',
+        guild='808893235103531039',
+        aliases=['cl', 'empty'],
+        brief="Remove all the musics."
+    )
+    async def cmd_clear(self, ctx):
+        player = self.get_player(ctx)
+        async with ctx.typing():
+            player.queue = list()
+            await ctx.message.reply("Playlist cleared")
+        return
