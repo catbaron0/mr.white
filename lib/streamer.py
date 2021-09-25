@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from discord import User, FFmpegOpusAudio
+from discord import User, FFmpegOpusAudio, Reaction
 from discord.ext import commands
 import discord
 # from async_timeout import timeout
@@ -246,8 +246,10 @@ class MusicPlayer:
             if self._guild.voice_client and self._guild.voice_client.is_connected:
                 self._guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set()))
             else:
-                self.msg_np = await self._channel.send("I'm not connected to any VC!")
+                self.msg_np = await self._channel.send("I'm not playing.")
 
+            if not music:
+                continue
             user = music.requester if music.requester else "Random"
             embed = discord.Embed(
                 title="Now playing",
@@ -396,6 +398,9 @@ class Streamer(commands.Cog):
         player = self.get_player(ctx)
         playlist = player.queue
         music = player.current
+        if not music:
+            await ctx.message.reply("I'm not playing.")
+            return
         user = music.requester if music.requester else "Random"
         desc = [f"▶️ [{music.title}]({music.web_url}) [{user}]"]
         for i, music in enumerate(playlist[:15]):
@@ -412,15 +417,20 @@ class Streamer(commands.Cog):
         brief="Show the current music."
     )
     async def cmd_np(self, ctx):
+        if ctx.guild.id not in self.players:
+            await ctx.message.reply("I'm not playing.")
+            return
         player = self.get_player(ctx)
         music = player.current
+        if not music:
+            await ctx.message.reply("I'm not playing.")
+            return
         user = music.requester if music.requester else "Random"
         desc = f"[{music.title}]({music.web_url}) [{user}]"
         embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
         async with ctx.typing():
-            reactions = self.msg_np.reactions
-            await self.msg_np.delete()
-            self.msg_np = await ctx.channel.send(embed=embed, reactions=reactions)
+            player.msg_np = await ctx.channel.send(embed=embed)
+            await player.msg_np.add_reaction('❤️')
 
 
     @commands.command(
