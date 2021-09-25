@@ -10,6 +10,9 @@ from functools import partial
 import youtube_dl
 from dataclasses import dataclass
 import pafy
+from pathlib import Path
+from queue import Queue
+import random
 
 # from discord import Embed
 # from discord.ext.commands import Bot, Cog
@@ -109,13 +112,43 @@ async def extract_stream_url(web_url: str, loop) -> Optional[str]:
     return res['url']
 
 
+@dataclass
+class Music:
+    title: str
+    web_url: str
+    requester: User = None
+    url: str = None
+    duration = None
+
+    async def update_url(self, loop):
+        self.url = await extract_stream_url(self.web_url, loop)
+
+    def __str__(self):
+        if self.requester:
+            return f"Song(name={self.title}, user={self.requester.name})"
+        else:
+            return f"Song(name={self.title}, user=None)"
+
+    def __repr__(self):
+        if self.requester:
+            return f"Song(name={self.title}, user={self.requester.name})"
+        else:
+            return f"Song(name={self.title}, user=None)"
+
+    def __eq__(self, other):
+        return self.web_url == other.web_url
+
+    def __lt__(self, other):
+        return self.name < other.name
+
+
 class MusicPlayer:
     __slots__ = (
-        'bot', '_guild', '_channel', '_cog', 'queue', 'next',
+        'bot', '_guild', '_channel', '_cog', 'queue', 'next', 'f_music_list', 'music_list',
         'current', 'msg_np', 'volume', 'msg_pl', 'loop_list', 'loop_single',
     )
 
-    def __init__(self, ctx):
+    def __init__(self, ctx, f_music_list: Path):
         self.bot = ctx.bot
         self._guild = ctx.guild
         self._channel = ctx.channel
@@ -129,30 +162,61 @@ class MusicPlayer:
         self.msg_pl = None
         self.volume = .5
         self.current = None
-        self.loop_list = True
+        self.loop_list = False
         self.loop_single = 0
 
+        self.f_music_list = f_music_list
+        self.music_list = Queue(100)
+        self.load_music_list()
+
         self.bot.loop.create_task(self.player_loop())
+
+    def load_music_list(self):
+        if not self.f_music_list.exists():
+            return
+        with open(self.f_music_list, 'r') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                title, web_url = line.strip().split('\t')
+                music = Music(title=title, web_url=web_url)
+                self.music_list.put(music)
+
+    def save_music_list(self):
+        with open(self.f_music_list, 'w') as f:
+            for music in self.music_list.queue:
+                f.write(f"{music.title}\t{music.web_url}\n")
 
     async def player_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             self.next.clear()
-
             try:
                 sleep = 0
                 if not (self.loop_single > 0 and self.current):
                     while sleep < 100:
-                        if not self.queue:
+                        logger.debug("Loopging ...")
+                        if self.queue:
+                            logger.debug("Play music in the queue ...")
+                            sleep = 0
+                            music = self.queue.pop(0)
+                            break
+                        elif not self.music_list.empty():
+                            logger.debug("Play music in the random queue ...")
+                            music = random.sample(self.music_list.queue, 1)[0]
+                            sleep = 0
+                            break
+                        else:
+                            logger.debug("Nothing to play ...")
                             # await time.sleep(1)
                             await asyncio.sleep(1)
                             sleep += 1
                             continue
-                        else:
-                            music = self.queue.pop(0)
-                            break
                     else:
+                        logger.debug("Slept 100 times. Leaving ...")
                         return
+                else:
+                    music = self.current
                     # async with timeout(5):
                     #     # Music(requester, web_url, title)
                     #     music = await self.queue.get()
@@ -179,15 +243,25 @@ class MusicPlayer:
             except Exception as e:
                 logger.debug(e)
             logger.debug("Now playing ...")
-            self._guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set()))
+            if self._guild.voice_client and self._guild.voice_client.is_connected:
+                self._guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set()))
+            else:
+                self.msg_np = await self._channel.send("I'm not connected to any VC!")
+
+            user = music.requester if music.requester else "Random"
             embed = discord.Embed(
                 title="Now playing",
-                description=f"[{music.title}]({music.web_url}) [{music.requester}]",
+                description=f"[{music.title}]({music.web_url}) [{user}]",
                 color=discord.Color.green()
             )
-            if self.msg_np:
-                await self.msg_np.delete()
-            self.msg_np = await self._channel.send(embed=embed)
+
+            if self._guild.voice_client and self._guild.voice_client.is_connected:
+                # It may be stopped by command
+                if self.msg_np:
+                    await self.msg_np.delete()
+                self.msg_np = await self._channel.send(embed=embed)
+                # await self.msg_np.add_reaction('\N{THUMBS UP SIGN}')
+                await self.msg_np.add_reaction('❤️')
 
             await self.next.wait()
             logger.info(f"loop_list and loop_single: {self.loop_list} and {self.loop_single}")
@@ -202,36 +276,16 @@ class MusicPlayer:
         return self.bot.loop.create_task(self._cog.cleanup(guild))
 
 
-@dataclass
-class Music:
-    requester: User
-    title: str
-    web_url: str
-    url: str = None
-    duration = None
-
-    async def update_url(self, loop):
-        self.url = await extract_stream_url(self.web_url, loop)
-
-    def __str__(self):
-        return f"Song(name={self.title}, user={self.requester.name})"
-
-    def __repr__(self):
-        return f"Song(name={self.title}, user={self.user.name})"
-
-    def __eq__(self, other):
-        return self.web_url == other.web_url
-
-    def __lt__(self, other):
-        return self.name < other.name
-
-
 class Streamer(commands.Cog):
     __slots__ = ('bot', 'players')
 
-    def __init__(self, bot):
+    def __init__(self, bot, config_path):
         self.bot = bot
         self.players = {}
+        self.config_path = Path(config_path)
+        if not self.config_path:
+            self.config_path.mkdir(parents=True, exist_ok=True)
+
 
     async def cleanup(self, guild):
         try:
@@ -245,9 +299,12 @@ class Streamer(commands.Cog):
 
     def get_player(self, ctx):
         try:
+            logger.debug("Trying to get player")
             player = self.players[ctx.guild.id]
         except KeyError:
-            player = MusicPlayer(ctx)
+            logger.debug("Trying to create a player")
+            f_music_list = self.config_path / f"music.{ctx.guild.id}"
+            player = MusicPlayer(ctx, f_music_list)
             self.players[ctx.guild.id] = player
         return player
 
@@ -269,6 +326,18 @@ class Streamer(commands.Cog):
         state = True
         info = "OK"
         return {'state': state, 'info': info}
+
+    @commands.command(
+        name='stop',
+        aliases=['quit'],
+        guild='808893235103531039',
+        brief='Stop playing.'
+    )
+    async def cmd_stop(self, ctx, *args):
+        vc = ctx.voice_client
+        if vc and vc.is_connected():
+            await vc.disconnect()
+            del self.players[ctx.guild.id]
 
     @commands.command(
         name='add',
@@ -302,6 +371,11 @@ class Streamer(commands.Cog):
             for item in items:
                 music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
                 # await player.queue.put(music)
+                if music not in player.music_list.queue:
+                    player.music_list.put(music)
+                    player.save_music_list()
+                else:
+                    logger.debug(f"It's in the list {music}")
                 if music in player.queue:
                     await msg.reply(f"This music is already in the playlist: {music.title}.")
                 else:
@@ -320,14 +394,78 @@ class Streamer(commands.Cog):
     )
     async def cmd_pl(self, ctx):
         player = self.get_player(ctx)
-        music = player.current
         playlist = player.queue
-        desc = [f"▶️ [{music.title}]({music.web_url}) [{music.requester.mention}]"]
+        music = player.current
+        user = music.requester if music.requester else "Random"
+        desc = [f"▶️ [{music.title}]({music.web_url}) [{user}]"]
         for i, music in enumerate(playlist[:15]):
-            desc.append(f"{i+1:<3d} [{music.title}]({music.web_url}) [{music.requester.mention}]")
+            user = music.requester if music.requester else "Random"
+            desc.append(f"{i+1:<3d} [{music.title}]({music.web_url}) [{user}]")
 
         embed = discord.Embed(title="Playlist", description='\n'.join(desc), color=discord.Color.green())
         self.msg_pl = await ctx.channel.send(embed=embed)
+
+    @commands.command(
+        name='playing',
+        guild='808893235103531039',
+        aliases=['np', 'current', 'cur'],
+        brief="Show the current music."
+    )
+    async def cmd_np(self, ctx):
+        player = self.get_player(ctx)
+        music = player.current
+        user = music.requester if music.requester else "Random"
+        desc = f"[{music.title}]({music.web_url}) [{user}]"
+        embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
+        async with ctx.typing():
+            reactions = self.msg_np.reactions
+            await self.msg_np.delete()
+            self.msg_np = await ctx.channel.send(embed=embed, reactions=reactions)
+
+
+    @commands.command(
+        name='replay',
+        guild='808893235103531039',
+        aliases=['rp'],
+        brief="Set switch to on to repeat the current music for 10 times."
+    )
+    async def cmd_replay(self, ctx, switch):
+        check = await self.check_vc(ctx)
+        if not check['state']:
+            await ctx.message.reply(check['info'])
+            return
+        player = self.get_player(ctx)
+        async with ctx.typing():
+            if switch == 'on':
+                player.loop_single = 10
+                await ctx.message.reply("This music will be repeated 10 times.")
+            elif switch == 'off':
+                player.loop_single = 0
+                await ctx.message.reply("Reply mode is canceled.")
+            else:
+                await ctx.message.reply("The switch arguments need to be on/off.")
+
+    @commands.command(
+        name='loop',
+        guild='808893235103531039',
+        aliases=['lp'],
+        brief="Toggle the loop on the playlist. "
+    )
+    async def cmd_toggle_loop_list(self, ctx, switch):
+        check = await self.check_vc(ctx)
+        if not check['state']:
+            await ctx.message.reply(check['info'])
+            return
+        player = self.get_player(ctx)
+        async with ctx.typing():
+            if switch == 'on':
+                player.loop_list = True
+                await ctx.message.reply("Start to loop on the playlist.")
+            elif switch == 'off':
+                player.loop_single = False
+                await ctx.message.reply("Stop loopping on the playlist.")
+            else:
+                await ctx.message.reply("The switch arguments need to be on/off.")
 
     @commands.command(
         name='next',
