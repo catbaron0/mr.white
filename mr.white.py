@@ -87,14 +87,14 @@ async def mp3(ctx, *args):
 async def on_ready():
     print('We have logged in as {0.user}'.format(bot))
 
-@bot.event
-async def on_message(message):
-    msg_txt = message.content
-    if msg_txt.startswith('-'):
-        reply = "Are you tring yo run a command?\n"
-        reply += "Pleash try to use / instead."
-        await message.reply(reply)
-    await bot.process_commands(message)
+# @bot.event
+# async def on_message(message):
+#     msg_txt = message.content
+#     if msg_txt.startswith('-'):
+#         reply = "Are you tring yo run a command?\n"
+#         reply += "Pleash try to use / instead."
+#         await message.reply(reply)
+#     await bot.process_commands(message)
 
 bot.add_cog(Streamer(bot))
 
