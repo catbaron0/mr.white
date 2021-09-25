@@ -3,7 +3,7 @@ A discord bot.
 Designed for my own use.
 
 # Setup
-python mr.white.py <TOKEN>
+`python mr.white.py <TOKEN>`
 
 # Commands
 ```
