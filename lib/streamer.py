@@ -197,13 +197,14 @@ class MusicPlayer:
                     while sleep < 100:
                         logger.debug("Loopging ...")
                         if self.queue:
-                            logger.debug("Play music in the queue ...")
                             sleep = 0
                             music = self.queue.pop(0)
+                            logger.debug(f"Play music in the queue: {music} ...")
                             break
                         elif not self.music_list.empty():
-                            logger.debug("Play music in the random queue ...")
                             music = random.sample(self.music_list.queue, 1)[0]
+                            logger.debug(f"music_list.len: {self.music_list.qsize()}")
+                            logger.debug(f"Play music in the random queue: {music}...")
                             sleep = 0
                             break
                         else:
@@ -211,7 +212,6 @@ class MusicPlayer:
                             # await time.sleep(1)
                             await asyncio.sleep(1)
                             sleep += 1
-                            continue
                     else:
                         logger.debug("Slept 100 times. Leaving ...")
                         return
@@ -233,6 +233,7 @@ class MusicPlayer:
                 await music.update_url(self.bot.loop)
             except Exception as e:
                 await self._channel.send(f"There was an error processing this song. \n{music.title}.\n{e}")
+                continue
             logger.debug("Updated url...")
             self.current = music
             try:
@@ -242,7 +243,7 @@ class MusicPlayer:
                 )
             except Exception as e:
                 logger.debug(e)
-            logger.debug("Now playing ...")
+            logger.debug(f"Now playing {music}...")
             if self._guild.voice_client and self._guild.voice_client.is_connected:
                 self._guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set()))
             else:
@@ -259,8 +260,6 @@ class MusicPlayer:
 
             if self._guild.voice_client and self._guild.voice_client.is_connected:
                 # It may be stopped by command
-                if self.msg_np:
-                    await self.msg_np.delete()
                 self.msg_np = await self._channel.send(embed=embed)
                 # await self.msg_np.add_reaction('\N{THUMBS UP SIGN}')
                 await self.msg_np.add_reaction('❤️')
@@ -273,6 +272,8 @@ class MusicPlayer:
                 self.loop_single -= 1
             source.cleanup()
             self.current = None
+        logger.error("The bot is closed!") 
+        await self.player_loop()
 
     def destroy(self, guild):
         return self.bot.loop.create_task(self._cog.cleanup(guild))
@@ -311,6 +312,13 @@ class Streamer(commands.Cog):
         return player
 
     async def check_vc(self, ctx) -> Dict:
+        guild_id = ctx.guild.id
+        if str(guild_id) != '808893235103531039':
+            logger.debug(f"guild id {guild_id}")
+            state = False
+            info = "You need to play streamer commands in Catbaron's Server."
+            return {'state': state, 'info': info}
+
         voice = ctx.message.author.voice
         if not voice:
             state = False
