@@ -25,7 +25,7 @@ import sys
 #     await ctx.send("test", components=[action_row])
 
 
-bot = commands.Bot(command_prefix='/')
+bot = commands.Bot(command_prefix='-')
 
 
 py_hdl = cmd.PinyinCMD()

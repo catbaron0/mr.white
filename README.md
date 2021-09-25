@@ -24,3 +24,10 @@ Streamer:
 Type /help command for more info on a command.
 You can also type /help category for more info on a category.
 ```
+
+# Dependencies
+* discord.py[voice]
+* pysocks
+* pafy
+* youtube-dl
+* pypinyin

@@ -32,7 +32,8 @@ class YoutubeMusic:
             'safeSearch': "none",
             'part': 'id,snippet',
             'type': 'video',
-            'videoDuration': 'any'
+            'videoDuration': 'any',
+            'key': 'AIzaSyCwRtNtJFfKTm_s5a8YmRTN1gpdMCiUCFg'
         }
         return qs
 

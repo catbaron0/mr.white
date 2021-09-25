@@ -112,7 +112,7 @@ async def extract_stream_url(web_url: str, loop) -> Optional[str]:
 class MusicPlayer:
     __slots__ = (
         'bot', '_guild', '_channel', '_cog', 'queue', 'next',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop_play'
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop_list', 'loop_single',
     )
 
     def __init__(self, ctx):
@@ -129,7 +129,8 @@ class MusicPlayer:
         self.msg_pl = None
         self.volume = .5
         self.current = None
-        self.loop_play = False
+        self.loop_list = True
+        self.loop_single = 0
 
         self.bot.loop.create_task(self.player_loop())
 
@@ -140,21 +141,24 @@ class MusicPlayer:
 
             try:
                 sleep = 0
-                while sleep < 5:
-                    if not self.queue:
-                        # await time.sleep(1)
-                        await asyncio.sleep(1)
-                        sleep += 1
-                        continue
+                if not (self.loop_single > 0 and self.current):
+                    while sleep < 100:
+                        if not self.queue:
+                            # await time.sleep(1)
+                            await asyncio.sleep(1)
+                            sleep += 1
+                            continue
+                        else:
+                            music = self.queue.pop(0)
+                            break
                     else:
-                        music = self.queue.pop(0)
-                        break
-                # async with timeout(5):
-                #     # Music(requester, web_url, title)
-                #     music = await self.queue.get()
-                #     logger.debug(f"Got a song: {music}")
-                #     # await self.queue.put(music)
-                #     # self.queue.append(music)
+                        return
+                    # async with timeout(5):
+                    #     # Music(requester, web_url, title)
+                    #     music = await self.queue.get()
+                    #     logger.debug(f"Got a song: {music}")
+                    #     # await self.queue.put(music)
+                    #     # self.queue.append(music)
             except asyncio.TimeoutError:
                 logger.debug("I'm leaving")
                 await self._channel.send("I'm leaving because there nothing to do.")
@@ -186,8 +190,11 @@ class MusicPlayer:
             self.msg_np = await self._channel.send(embed=embed)
 
             await self.next.wait()
-            if self.loop_play:
+            logger.info(f"loop_list and loop_single: {self.loop_list} and {self.loop_single}")
+            if self.loop_list and self.loop_single == 0:
                 self.queue.append(music)
+            if self.loop_single > 0:
+                self.loop_single -= 1
             source.cleanup()
             self.current = None
 
@@ -266,6 +273,7 @@ class Streamer(commands.Cog):
     @commands.command(
         name='add',
         aliases=['play', 'p'],
+        guild='808893235103531039',
         brief='Add a song to the playlist through keywords or youtube url'
     )
     async def cmd_add(self, ctx, *args):
@@ -295,7 +303,7 @@ class Streamer(commands.Cog):
                 music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
                 # await player.queue.put(music)
                 if music in player.queue:
-                    await msg.reply(f"This song is already in the playlist: {music.title}.")
+                    await msg.reply(f"This music is already in the playlist: {music.title}.")
                 else:
                     new_music.append(music.title)
                     player.queue.append(music)
@@ -306,15 +314,16 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='pl',
+        guild='808893235103531039',
         aliases=['playlist', 'q'],
         brief="Print the playlist."
     )
     async def cmd_pl(self, ctx):
         player = self.get_player(ctx)
         music = player.current
-        playlist = player.queue[:-1]
+        playlist = player.queue
         desc = [f"▶️ [{music.title}]({music.web_url}) [{music.requester.mention}]"]
-        for i, music in enumerate(playlist):
+        for i, music in enumerate(playlist[:15]):
             desc.append(f"{i+1:<3d} [{music.title}]({music.web_url}) [{music.requester.mention}]")
 
         embed = discord.Embed(title="Playlist", description='\n'.join(desc), color=discord.Color.green())
@@ -322,6 +331,7 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='next',
+        guild='808893235103531039',
         aliases=['n', 'skip'],
         brief="Play next music."
     )
@@ -338,6 +348,7 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='pick',
+        guild='808893235103531039',
         aliases=['pk'],
         brief="Pick a music."
     )
@@ -354,6 +365,7 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='remove',
+        guild='808893235103531039',
         aliases=['rm'],
         brief="Remove a music from the playlist."
     )
