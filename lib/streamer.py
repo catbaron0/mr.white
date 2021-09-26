@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict
 from discord import User, FFmpegOpusAudio
 from discord.ext import commands
 import discord
@@ -250,11 +250,7 @@ class MusicPlayer:
                 logger.debug("I'm leaving")
                 title = "Warning"
                 desc = "I'm leaving because there nothing to do."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.yellow()
-                )
+                embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await self._channel.send(embed=embed)
                 return self.destroy(self._guild)
 
@@ -265,11 +261,7 @@ class MusicPlayer:
             except Exception as e:
                 title = "Error"
                 desc = f"There was an error reading this source url. \n{music.title}.\n{e}"
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.red()
-                )
+                embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                 await self._channel.send(embed=embed)
                 # Read next music
                 continue
@@ -314,11 +306,7 @@ class MusicPlayer:
                         # In case of -next command but the vc is disconnected.
                         title = "Error"
                         desc = "I'm not playing."
-                        embed = discord.Embed(
-                                title=title,
-                                description=desc,
-                                color=discord.Color.red()
-                        )
+                        embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                         self.msg_np = await self._channel.send(embed=embed)
                     await self.next.wait()
                     source.cleanup()
@@ -433,78 +421,57 @@ class Streamer(commands.Cog):
         if not query.strip():
             title = "Error"
             desc = "Keywords or Youtube URL is expected!"
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.red()
-            )
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             logger.debug("Keywords or Youtube URL is expected!")
             return
         logger.debug("Get player for cmd_add")
         player = self.get_player(ctx)
 
-        async with ctx.typing():
-            if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
-                logger.debug("Got an url!")
-                items = await  info_url(query, ctx.bot.loop)
+        if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
+            logger.debug("Got an url!")
+            items = await  info_url(query, ctx.bot.loop)
+        else:
+            logger.debug("Got an keyword query!")
+            items = info_keywords(query)
+            if items:
+                items = [items]
+        if not items:
+            title = "Error"
+            desc = "Failed to add a song to the playlist!"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
+            return
+        new_music = list()
+        for item in items:
+            music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
+            # await player.queue.put(music)
+            if music not in player.random_list:
+                _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
+                player.random_list.append(_music)
+                player.save_random_list()
             else:
-                logger.debug("Got an keyword query!")
-                items = info_keywords(query)
-                if items:
-                    items = [items]
-            if not items:
-                title = "Error"
-                desc = "Failed to add a song to the playlist!"
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.red()
-                )
+                logger.debug(f"It's in the list {music}")
+            if music in player.queue:
+                title = "Warning"
+                desc =  "This music is already in the playlist: {music.title}."
+                embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await ctx.message.reply(embed=embed)
-                return
-            new_music = list()
-            for item in items:
-                music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
-                # await player.queue.put(music)
-                if music not in player.random_list:
-                    _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
-                    player.random_list.append(_music)
-                    player.save_random_list()
-                else:
-                    logger.debug(f"It's in the list {music}")
-                if music in player.queue:
-                    title = "Warning"
-                    desc =  "This music is already in the playlist: {music.title}."
-                    embed = discord.Embed(
-                            title=title,
-                            description=desc,
-                            color=discord.Color.yellow()
-                    )
-                    await ctx.message.reply(embed=embed)
-                else:
-                    new_music.append(music.title)
-                    player.queue.append(music)
-            if len(new_music) == 1:
-                logger.debug(f"Queued a music: {new_music[0]}.")
-                title = "Well done!"
-                desc = f"Queued a music: {new_music[0]}."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            elif len(new_music) > 1:
-                logger.debug(f"Queued {len(new_music)} musics.")
-                title = "Well done!"
-                desc = f"Queued {len(new_music)} musics."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
+            else:
+                new_music.append(music.title)
+                player.queue.append(music)
+        if len(new_music) == 1:
+            logger.debug(f"Queued a music: {new_music[0]}.")
+            title = "Well done!"
+            desc = f"Queued a music: {new_music[0]}."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        elif len(new_music) > 1:
+            logger.debug(f"Queued {len(new_music)} musics.")
+            title = "Well done!"
+            desc = f"Queued {len(new_music)} musics."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='rl',
@@ -516,15 +483,10 @@ class Streamer(commands.Cog):
         for player in self.players.values():
             player.random_list = player.load_list_from_file(player.f_random_list)
             i += 1
-        async with ctx.typing():
-            title = "Well done!"
-            desc = f"{i} player reloaded."
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.green()
-            )
-            await ctx.message.reply(embed=embed)
+        title = "Well done!"
+        desc = f"{i} player reloaded."
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='pl',
@@ -540,11 +502,7 @@ class Streamer(commands.Cog):
         if not music:
             title = "Error"
             desc = "Failed to run command: I'm not playing."
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.red()
-            )
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
         user = music.requester if music.requester else "Random"
@@ -566,11 +524,7 @@ class Streamer(commands.Cog):
         if ctx.guild.id not in self.players:
             title = "Error"
             desc = "Failed to run command: I'm not playing."
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.red()
-            )
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_np")
@@ -579,19 +533,14 @@ class Streamer(commands.Cog):
         if not music:
             title = "Error"
             desc = "Failed to run command: I'm not playing."
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.red()
-            )
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
         user = music.requester if music.requester else "Random"
         desc = f"[({music.duration_str}) {music.title}]({music.web_url}) [{user}]"
         embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
-        async with ctx.typing():
-            player.msg_np = await ctx.channel.send(embed=embed)
-            await player.msg_np.add_reaction('❤️')
+        player.msg_np = await ctx.channel.send(embed=embed)
+        await player.msg_np.add_reaction('❤️')
 
 
     @commands.command(
@@ -612,36 +561,23 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_replay")
         player = self.get_player(ctx)
-        async with ctx.typing():
-            if times >= 10:
-                player.loop_single = 10
-                title = "Well done!"
-                desc = "This music will be repeated 10 times."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            elif times > 0:
-                player.loop_single = times
-                title = "Well done!"
-                desc = "This music will be repeated {times} times."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            else:
-                title = "Well done"
-                desc = "Reply mode is canceled."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
+        if times >= 10:
+            player.loop_single = 10
+            title = "Well done!"
+            desc = "This music will be repeated 10 times."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        elif times > 0:
+            player.loop_single = times
+            title = "Well done!"
+            desc = f"This music will be repeated {times} times."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        else:
+            title = "Well done"
+            desc = "Reply mode is canceled."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='loop',
@@ -661,36 +597,23 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_loop")
         player = self.get_player(ctx)
-        async with ctx.typing():
-            if switch == 'on':
-                player.loop_list = True
-                title = "Well done!"
-                desc = "Start to loop on the playlist."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            elif switch == 'off':
-                player.loop_single = False
-                title = "Well done!"
-                desc = "Stop loopping on the playlist."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            else:
-                title = "Error"
-                desc = "The switch arguments need to be on/off."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.red()
-                )
-                await ctx.message.reply(embed=embed)
+        if switch == 'on':
+            player.loop_list = True
+            title = "Well done!"
+            desc = "Start to loop on the playlist."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        elif switch == 'off':
+            player.loop_single = False
+            title = "Well done!"
+            desc = "Stop loopping on the playlist."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        else:
+            title = "Error"
+            desc = "The switch arguments need to be on/off."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='next',
@@ -732,27 +655,19 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_pick")
         player = self.get_player(ctx)
-        async with ctx.typing():
-            if 0 < pos <= len(player.queue):
-                music = player.queue.pop(pos - 1)
-                player.queue.insert(0, player.queue.pop(pos - 1))
-                title = "Well done!"
-                desc = f"One music is picked: {music.title}"
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            else:
-                title = "Error"
-                desc = "Failed to run command !Invalid pos!"
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.red()
-                )
-                await ctx.message.reply(embed=embed)
+        if 0 < pos <= len(player.queue):
+            music = player.queue.pop(pos - 1)
+            player.queue.insert(0, player.queue.pop(pos - 1))
+            title = "Well done!"
+            desc = f"One music is picked: {music.title}"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green()
+            )
+            await ctx.message.reply(embed=embed)
+        else:
+            title = "Error"
+            desc = "Failed to run command !Invalid pos!"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='remove',
@@ -772,37 +687,25 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_rm")
         player = self.get_player(ctx)
-        async with ctx.typing():
-            if pos == 0:
-                player.queue = list()
-                title = "Well done!"
-                desc = "Playlist cleared."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-                return
-            if 0 < pos < len(player.queue):
-                rm = player.queue.pop(pos - 1)
-                title = "Well done!"
-                desc = f"Music removied: {rm.title}."
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.green()
-                )
-                await ctx.message.reply(embed=embed)
-            else:
-                title = "Error"
-                desc = "Failed to run command! Invalid pos!"
-                embed = discord.Embed(
-                        title=title,
-                        description=desc,
-                        color=discord.Color.red()
-                )
-                await ctx.message.reply(embed=embed)
+
+        if pos == 0:
+            player.queue = list()
+            title = "Well done!"
+            desc = "Playlist cleared."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+            return
+        if 0 < pos < len(player.queue):
+            rm = player.queue.pop(pos - 1)
+            title = "Well done!"
+            desc = f"Music removied: {rm.title}."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await ctx.message.reply(embed=embed)
+        else:
+            title = "Error"
+            desc = "Failed to run command! Invalid pos!"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
 
 
     @commands.command(
@@ -823,14 +726,9 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_clear")
         player = self.get_player(ctx)
-        async with ctx.typing():
-            player.queue = list()
-            title = "Well done!"
-            desc = "Playlist cleared."
-            embed = discord.Embed(
-                    title=title,
-                    description=desc,
-                    color=discord.Color.green()
-            )
-            await ctx.message.reply(embed=embed)
+        player.queue = list()
+        title = "Well done!"
+        desc = "Playlist cleared."
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        await ctx.message.reply(embed=embed)
         return
