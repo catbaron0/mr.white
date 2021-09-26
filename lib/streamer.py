@@ -79,10 +79,14 @@ def info_keywords(key_words: str) -> str:
         return {'web_url': url, 'title': title}
 
 
-def info_url(web_url: str):
+async def info_url(web_url: str, loop):
     items = list()
+    to_run = partial(ytdl.extract_info, url=web_url, download=False)
     try:
-        res = ytdl.extract_info(web_url)
+        logger.debug("Extract web url!")
+        # res = ytdl.extract_info(web_url)
+        res = await loop.run_in_executor(None, to_run)
+        logger.debug("Extracted web url!")
     except Exception as e:
         logger.error(f"Failed to fetch playlist url: {web_url}\n{e}")
         return None
@@ -101,7 +105,7 @@ async def extract_stream_url(web_url: str, loop) -> Optional[str]:
     '''
     Extract the real url from the web_url.
     '''
-    to_run = partial(ytdl.extract_info, url=web_url)
+    to_run = partial(ytdl.extract_info, url=web_url, download=False)
     try:
         res = await loop.run_in_executor(None, to_run)
         # res = await ytdl.extract_info(web_url)
@@ -304,11 +308,13 @@ class Streamer(commands.Cog):
         try:
             logger.debug("Trying to get player")
             player = self.players[ctx.guild.id]
+            logger.debug("Got a player")
         except KeyError:
             logger.debug("Trying to create a player")
             f_music_list = self.config_path / f"music.{ctx.guild.id}"
             player = MusicPlayer(ctx, f_music_list)
             self.players[ctx.guild.id] = player
+            logger.debug("Created a player")
         return player
 
     async def check_vc(self, ctx) -> Dict:
@@ -325,6 +331,7 @@ class Streamer(commands.Cog):
             info = "You need to join a VC to run this command."
             return {'state': state, 'info': info}
         vc = voice.channel
+        logger.debug("Get player for cmd_check")
         player = self.get_player(ctx)
         p_vc = player._guild.voice_client
         if p_vc and p_vc.channel != vc:
@@ -363,12 +370,17 @@ class Streamer(commands.Cog):
         msg = ctx.message
         requester = ctx.message.author
         query = ' '.join(args)
+        if not query.strip():
+            await ctx.message.reply("Keywords or Youtube URL is expected!")
+            logger.debug("Keywords or Youtube URL is expected!")
+            return
+        logger.debug("Get player for cmd_add")
         player = self.get_player(ctx)
 
         async with ctx.typing():
             if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
                 logger.debug("Got an url!")
-                items = info_url(query)
+                items = await  info_url(query, ctx.bot.loop)
             else:
                 logger.debug("Got an keyword query!")
                 items = info_keywords(query)
@@ -382,7 +394,8 @@ class Streamer(commands.Cog):
                 music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
                 # await player.queue.put(music)
                 if music not in player.music_list.queue:
-                    player.music_list.put(music)
+                    _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
+                    player.music_list.put(_music)
                     player.save_music_list()
                 else:
                     logger.debug(f"It's in the list {music}")
@@ -392,9 +405,24 @@ class Streamer(commands.Cog):
                     new_music.append(music.title)
                     player.queue.append(music)
             if len(new_music) == 1:
+                logger.debug(f"Queued a music: {new_music[0]}.")
                 await msg.reply(f"Queued a music: {new_music[0]}.")
             elif len(new_music) > 1:
+                logger.debug(f"Queued {len(new_music)} musics.")
                 await msg.reply(f"Queued {len(new_music)} musics.")
+
+    @commands.command(
+        name='rl',
+        aliases=['reload'],
+        brief="Reload random playlist."
+    )
+    async def cmd_rl(self, ctx):
+        i = 0
+        for player in self.players.values():
+            player.load_music_list()
+            i += 1
+        async with ctx.typing():
+            await ctx.message.reply(f"{i} player reloaded.")
 
     @commands.command(
         name='pl',
@@ -403,6 +431,7 @@ class Streamer(commands.Cog):
         brief="Print the playlist."
     )
     async def cmd_pl(self, ctx):
+        logger.debug("Get player for cmd_pl")
         player = self.get_player(ctx)
         playlist = player.queue
         music = player.current
@@ -410,7 +439,7 @@ class Streamer(commands.Cog):
             await ctx.message.reply("I'm not playing.")
             return
         user = music.requester if music.requester else "Random"
-        desc = [f"▶️ [{music.title}]({music.web_url}) [{user}]"]
+        desc = [f"▶️ [{music.title}]({music.web_url}) [{user}]\n------"]
         for i, music in enumerate(playlist[:15]):
             user = music.requester if music.requester else "Random"
             desc.append(f"{i+1:<3d} [{music.title}]({music.web_url}) [{user}]")
@@ -428,6 +457,7 @@ class Streamer(commands.Cog):
         if ctx.guild.id not in self.players:
             await ctx.message.reply("I'm not playing.")
             return
+        logger.debug("Get player for cmd_np")
         player = self.get_player(ctx)
         music = player.current
         if not music:
@@ -447,21 +477,22 @@ class Streamer(commands.Cog):
         aliases=['rp'],
         brief="Set switch to on to repeat the current music for 10 times."
     )
-    async def cmd_replay(self, ctx, switch):
+    async def cmd_replay(self, ctx, times: int):
         check = await self.check_vc(ctx)
         if not check['state']:
             await ctx.message.reply(check['info'])
             return
+        logger.debug("Get player for cmd_replay")
         player = self.get_player(ctx)
         async with ctx.typing():
-            if switch == 'on':
+            if times >= 10:
                 player.loop_single = 10
                 await ctx.message.reply("This music will be repeated 10 times.")
-            elif switch == 'off':
-                player.loop_single = 0
-                await ctx.message.reply("Reply mode is canceled.")
+            elif times > 0:
+                player.loop_single = times
+                await ctx.message.reply(f"This music will be repeated {times} times.")
             else:
-                await ctx.message.reply("The switch arguments need to be on/off.")
+                await ctx.message.reply("Reply mode is canceled.")
 
     @commands.command(
         name='loop',
@@ -474,6 +505,7 @@ class Streamer(commands.Cog):
         if not check['state']:
             await ctx.message.reply(check['info'])
             return
+        logger.debug("Get player for cmd_loop")
         player = self.get_player(ctx)
         async with ctx.typing():
             if switch == 'on':
@@ -513,6 +545,7 @@ class Streamer(commands.Cog):
         if not check['state']:
             await ctx.message.reply(check['info'])
             return
+        logger.debug("Get player for cmd_pick")
         player = self.get_player(ctx)
         async with ctx.typing():
             if 0 < pos <= len(player.queue):
@@ -533,6 +566,7 @@ class Streamer(commands.Cog):
         if not check['state']:
             await ctx.message.reply(check['info'])
             return
+        logger.debug("Get player for cmd_rm")
         player = self.get_player(ctx)
         async with ctx.typing():
             if pos == 0:
@@ -554,6 +588,11 @@ class Streamer(commands.Cog):
         brief="Remove all the musics."
     )
     async def cmd_clear(self, ctx):
+        check = await self.check_vc(ctx)
+        if not check['state']:
+            await ctx.message.reply(check['info'])
+            return
+        logger.debug("Get player for cmd_clear")
         player = self.get_player(ctx)
         async with ctx.typing():
             player.queue = list()
