@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 from discord import User, FFmpegOpusAudio
 from discord.ext import commands
 import discord
@@ -54,6 +54,9 @@ ytdlopts = {
 ytdl = youtube_dl.YoutubeDL(ytdlopts)
 pafy.set_api_key('AIzaSyCwRtNtJFfKTm_s5a8YmRTN1gpdMCiUCFg')
 
+single_loop_sign = "🔂"
+list_loop_sign = "🔄"
+play_sign = "▶️"
 
 def info_keywords(key_words: str) -> str:
     '''
@@ -122,6 +125,7 @@ class Music:
     requester: User = None
     url: str = None
     duration = None
+    loop: int = 1
 
     async def update_info(self, loop):
         to_run = partial(ytdl.extract_info, url=self.web_url, download=False)
@@ -132,8 +136,18 @@ class Music:
         self.url = res['url']
         self.duration = res['duration']
 
+    def get_desc(self, playing: bool) -> str:
+        user = self.requester if self.requester else "Random"
+        head = ""
+        if self.loop > 1:
+            head = f"{single_loop_sign}(x{self.loop}) " + head
+        if playing:
+            head = play_sign + " " + head
+        return f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}]"
+
+
     @property
-    def duration_str(self):
+    def duration_str(self) -> Optional[int]:
         if self.duration:
             m = self.duration // 60
             s = self.duration % 60
@@ -143,15 +157,15 @@ class Music:
 
     def __str__(self):
         if self.requester:
-            return f"Music(name={self.title}, user={self.requester.name})"
+            return f"Music(name={self.title}, user={self.requester.name}, loop={self.loop})"
         else:
-            return f"Music(name={self.title}, user=None)"
+            return f"Music(name={self.title}, user=Random, loop={self.loop})"
 
     def __repr__(self):
         if self.requester:
-            return f"Music(name={self.title}, user={self.requester.name})"
+            return f"Music(name={self.title}, user={self.requester.name}, loop={self.loop})"
         else:
-            return f"Music(name={self.title}, user=None)"
+            return f"Music(name={self.title}, user=Random, loop={self.loop})"
 
     def __eq__(self, other):
         return self.web_url == other.web_url
@@ -163,7 +177,7 @@ class Music:
 class MusicPlayer:
     __slots__ = (
         'bot', '_guild', '_channel', '_cog', 'queue', 'next', 'f_random_list', 'random_list',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop_list', 'loop_single',
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop',
     )
 
     def __init__(self, ctx, f_random_list: Path):
@@ -180,8 +194,7 @@ class MusicPlayer:
         self.msg_pl = None
         self.volume = .5
         self.current = None
-        self.loop_list = False
-        self.loop_single = 0
+        self.loop = False
 
         self.f_random_list = f_random_list
         self.random_list = self.load_list_from_file(self.f_random_list)
@@ -221,7 +234,7 @@ class MusicPlayer:
         Sleep 1 second if failed to get any music.
         '''
         while True:
-            if self.loop_single > 0 and self.current:
+            if self.current and  self.current.loop > 1:
                 # For single loop
                 return self.current
             if self.queue:
@@ -255,6 +268,8 @@ class MusicPlayer:
                 return self.destroy(self._guild)
 
             # Fetch the real url
+            logger.debug(f"Got music: {music}...")
+            logger.debug(f"Current: {self.current}...")
             logger.debug("Updating url...")
             try:
                 await music.update_info(self.bot.loop)
@@ -279,19 +294,17 @@ class MusicPlayer:
 
             # Print the musci to play
             logger.debug(f"Now playing {music}...")
-            user = music.requester if music.requester else "Random"
             embed = discord.Embed(
                 title="Now playing",
-                description=f"[({music.duration_str}) {music.title}]({music.web_url}) [{user}]",
+                description=music.get_desc(True),
                 color=discord.Color.green()
             )
             self.msg_np = await self._channel.send(embed=embed)
             await self.msg_np.add_reaction('❤️')
             self.current = music
 
+
             # Play the music
-            if self.loop_single > 0:
-                self.loop_single -= 1
             try:
                 if music.duration:
                     time = 10 + music.duration
@@ -309,6 +322,9 @@ class MusicPlayer:
                         embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                         self.msg_np = await self._channel.send(embed=embed)
                     await self.next.wait()
+                    if self.current and self.current.loop > 1:
+                        logger.debug("Reduce loop!")
+                        self.current.loop -= 1
                     source.cleanup()
             except asyncio.TimeoutError:
                 logger.debug(f"Failed to play the music:{music}")
@@ -320,7 +336,7 @@ class MusicPlayer:
                 await self._channel.send(embed=embed)
                 continue
 
-            if self.loop_list and self.loop_single == 0:
+            if self.loop and self.current.loop == 1:
                 self.queue.append(music)
 
     def destroy(self, guild):
@@ -350,9 +366,7 @@ class Streamer(commands.Cog):
 
     def get_player(self, ctx):
         try:
-            logger.debug("Trying to get player")
             player = self.players[ctx.guild.id]
-            logger.debug("Got a player")
         except KeyError:
             logger.debug("Trying to create a player")
             f_random_list = self.config_path / f"music.{ctx.guild.id}"
@@ -505,11 +519,13 @@ class Streamer(commands.Cog):
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
-        user = music.requester if music.requester else "Random"
-        desc = [f"▶️ [({music.duration_str}) {music.title}]({music.web_url}) [{user}]\n------"]
-        for i, music in enumerate(playlist[:15]):
-            user = music.requester if music.requester else "Random"
-            desc.append(f"{i+1:<3d} [({music.duration_str}) {music.title}]({music.web_url}) [{user}]")
+        desc = [music.get_desc(playing=True)]
+        if playlist:
+            len_pl = min(len(playlist), 15)
+            desc.append(f"=========== {len_pl}/{len(playlist)} ===========")
+            for i, music in enumerate(playlist[:15]):
+                desc_i = music.get_desc(playing=False)
+                desc.append(f"{i+1:<3d} {desc_i}")
 
         embed = discord.Embed(title="Playlist", description='\n'.join(desc), color=discord.Color.green())
         self.msg_pl = await ctx.channel.send(embed=embed)
@@ -536,8 +552,7 @@ class Streamer(commands.Cog):
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
-        user = music.requester if music.requester else "Random"
-        desc = f"[({music.duration_str}) {music.title}]({music.web_url}) [{user}]"
+        desc = music.get_desc(playing=True)
         embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
         player.msg_np = await ctx.channel.send(embed=embed)
         await player.msg_np.add_reaction('❤️')
@@ -561,16 +576,21 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_replay")
         player = self.get_player(ctx)
-        if times >= 10:
-            player.loop_single = 10
+        if not player.current:
+            title = "Error"
+            desc = "Failed to run command: I'm not playing!"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
+        if times > 10:
+            player.current.loop = 10
             title = "Well done!"
-            desc = "This music will be repeated 10 times."
+            desc = "This music will be played for 10 times."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
-        elif times > 0:
-            player.loop_single = times
+        elif times >= 1:
+            player.current.loop = times
             title = "Well done!"
-            desc = f"This music will be repeated {times} times."
+            desc = f"This music will be played for {times} times."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
         else:
@@ -598,13 +618,13 @@ class Streamer(commands.Cog):
         logger.debug("Get player for cmd_loop")
         player = self.get_player(ctx)
         if switch == 'on':
-            player.loop_list = True
+            player.loop = True
             title = "Well done!"
             desc = "Start to loop on the playlist."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
         elif switch == 'off':
-            player.loop_single = False
+            player.current.loop = False
             title = "Well done!"
             desc = "Stop loopping on the playlist."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
