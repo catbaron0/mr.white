@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from discord import User, FFmpegOpusAudio, Reaction
+from discord import User, FFmpegOpusAudio
 from discord.ext import commands
 import discord
 # from async_timeout import timeout
@@ -11,8 +11,9 @@ import youtube_dl
 from dataclasses import dataclass
 import pafy
 from pathlib import Path
-from queue import Queue
 import random
+from collections import deque
+
 
 # from discord import Embed
 # from discord.ext.commands import Bot, Cog
@@ -148,11 +149,11 @@ class Music:
 
 class MusicPlayer:
     __slots__ = (
-        'bot', '_guild', '_channel', '_cog', 'queue', 'next', 'f_music_list', 'music_list',
+        'bot', '_guild', '_channel', '_cog', 'queue', 'next', 'f_random_list', 'random_list',
         'current', 'msg_np', 'volume', 'msg_pl', 'loop_list', 'loop_single',
     )
 
-    def __init__(self, ctx, f_music_list: Path):
+    def __init__(self, ctx, f_random_list: Path):
         self.bot = ctx.bot
         self._guild = ctx.guild
         self._channel = ctx.channel
@@ -169,26 +170,35 @@ class MusicPlayer:
         self.loop_list = False
         self.loop_single = 0
 
-        self.f_music_list = f_music_list
-        self.music_list = Queue(100)
-        self.load_music_list()
+        self.f_random_list = f_random_list
+        self.random_list = self.load_list_from_file(self.f_random_list)
+        logger.debug(f"Len(random_list): {len(self.random_list)}")
 
         self.bot.loop.create_task(self.player_loop())
 
-    def load_music_list(self):
-        if not self.f_music_list.exists():
+    def load_list_from_file(self, fn):
+        if not self.f_random_list.exists():
+            logger.debug("File does not exist!")
             return
-        with open(self.f_music_list, 'r') as f:
+        logger.debug(f"Loading from {self.f_random_list}")
+        ml = deque(maxlen=100)
+        with open(self.f_random_list, 'r') as f:
             for line in f:
+                # logger.debug("Test empty lines")
                 if not line.strip():
                     continue
+                # logger.debug("Obtain title and web_url")
                 title, web_url = line.strip().split('\t')
+                # logger.debug(f"Music(title={title}, web_url={web_url})")
                 music = Music(title=title, web_url=web_url)
-                self.music_list.put(music)
+                # logger.debug("Put music.")
+                ml.append(music)
+        logger.debug(f"The music list is updated!: {len(ml)}")
+        return ml
 
-    def save_music_list(self):
-        with open(self.f_music_list, 'w') as f:
-            for music in self.music_list.queue:
+    def save_random_list(self):
+        with open(self.f_random_list, 'w') as f:
+            for music in self.random_list:
                 f.write(f"{music.title}\t{music.web_url}\n")
 
     async def player_loop(self):
@@ -205,13 +215,14 @@ class MusicPlayer:
                             music = self.queue.pop(0)
                             logger.debug(f"Play music in the queue: {music} ...")
                             break
-                        elif not self.music_list.empty():
-                            music = random.sample(self.music_list.queue, 1)[0]
-                            logger.debug(f"music_list.len: {self.music_list.qsize()}")
+                        elif self.random_list:
+                            music = random.sample(self.random_list, 1)[0]
+                            logger.debug(f"random_list.len: {len(self.random_list)}")
                             logger.debug(f"Play music in the random queue: {music}...")
                             sleep = 0
                             break
                         else:
+                            logger.debug(f"Len(random_list): {len(self.random_list)}")
                             logger.debug("Nothing to play ...")
                             # await time.sleep(1)
                             await asyncio.sleep(1)
@@ -311,8 +322,8 @@ class Streamer(commands.Cog):
             logger.debug("Got a player")
         except KeyError:
             logger.debug("Trying to create a player")
-            f_music_list = self.config_path / f"music.{ctx.guild.id}"
-            player = MusicPlayer(ctx, f_music_list)
+            f_random_list = self.config_path / f"music.{ctx.guild.id}"
+            player = MusicPlayer(ctx, f_random_list)
             self.players[ctx.guild.id] = player
             logger.debug("Created a player")
         return player
@@ -393,10 +404,10 @@ class Streamer(commands.Cog):
             for item in items:
                 music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
                 # await player.queue.put(music)
-                if music not in player.music_list.queue:
+                if music not in player.random_list:
                     _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
-                    player.music_list.put(_music)
-                    player.save_music_list()
+                    player.random_list.append(_music)
+                    player.save_random_list()
                 else:
                     logger.debug(f"It's in the list {music}")
                 if music in player.queue:
@@ -419,7 +430,7 @@ class Streamer(commands.Cog):
     async def cmd_rl(self, ctx):
         i = 0
         for player in self.players.values():
-            player.load_music_list()
+            player.random_list = player.load_list_from_file(player.f_random_list)
             i += 1
         async with ctx.typing():
             await ctx.message.reply(f"{i} player reloaded.")
