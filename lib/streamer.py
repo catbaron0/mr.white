@@ -56,10 +56,14 @@ pafy.set_api_key('AIzaSyCwRtNtJFfKTm_s5a8YmRTN1gpdMCiUCFg')
 
 sign_single_loop = "🔂"
 sign_list_loop= "🔄"
+sign_next = "⏭"
 sign_play = "▶️"
-sign_next = "▶️"
-sign_like = '❤️'
+sign_like = '❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💟 ❣️ 💕 💞 💗 💘 💝 🥰'
+sign_dislike = '💔'
+sign_no = '❌'
 
+# signs_np = (sign_like[0], sign_dislike, sign_next, sign_single_loop)
+signs_np = (sign_like[0], sign_next, sign_single_loop)
 
 def info_keywords(key_words: str) -> str:
     '''
@@ -240,18 +244,18 @@ class MusicList:
 
 class MusicPlayer:
     __slots__ = (
-        'bot', '_guild', '_channel', '_cog', 'playlist', 'next', 'f_random_list', 'random_list',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit'
+        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_random_list', 'random_list',
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc'
     )
 
     def __init__(self, ctx, config_path: Path):
         self.bot = ctx.bot
-        self._guild = ctx.guild
-        self._channel = ctx.channel
-        self._cog = ctx.cog
+        self.guild = ctx.guild
+        self.channel = ctx.channel
+        self.cog = ctx.cog
         self.config_path = config_path
 
-        self.next = asyncio.Event()
+        self.next_event = asyncio.Event()
 
         self.msg_np = None
         self.msg_pl = None
@@ -273,40 +277,20 @@ class MusicPlayer:
         self.bot.loop.create_task(self.player_loop())
         self.is_exit = False
 
-    async def stop(self, vc):
-        self.is_exit = True
-        if vc and vc.is_connected():
-            await vc.disconnect()
+    async def next(self):
+        vc = self.guild.voice_client
         if not vc.is_playing():
             return
         else:
             vc.stop()
 
+    async def stop(self):
+        self.is_exit = True
+        await self.next()
+        vc = self.guild.voice_client
+        if vc and vc.is_connected():
+            await vc.disconnect()
 
-    # def load_list_from_file(self, fn):
-    #     if not self.f_random_list.exists():
-    #         logger.debug("File does not exist!")
-    #         return
-    #     logger.debug(f"Loading from {self.f_random_list}")
-    #     ml = deque(maxlen=500)
-    #     with open(self.f_random_list, 'r') as f:
-    #         for line in f:
-    #             # logger.debug("Test empty lines")
-    #             if not line.strip():
-    #                 continue
-    #             # logger.debug("Obtain title and web_url")
-    #             title, web_url = line.strip().split('\t')
-    #             # logger.debug(f"Music(title={title}, web_url={web_url})")
-    #             music = Music(title=title, web_url=web_url)
-    #             # logger.debug("Put music.")
-    #             ml.append(music)
-    #     logger.debug(f"The music list is updated!: {len(ml)}")
-    #     return ml
-
-    # def save_list(self, plist):
-    #     with open(self.f_random_list, 'w') as f:
-    #         for music in plist:
-    #             f.write(f"{music.title}\t{music.web_url}\n")
 
     async def get_music(self):
         '''
@@ -336,7 +320,7 @@ class MusicPlayer:
     async def player_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
-            self.next.clear()
+            self.next_event.clear()
             # Get a music
             try:
                 async with timeout(10):
@@ -346,8 +330,8 @@ class MusicPlayer:
                 title = "Warning"
                 desc = "I'm leaving because there nothing to do."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
-                await self._channel.send(embed=embed)
-                return self.destroy(self._guild)
+                await self.channel.send(embed=embed)
+                return self.destroy(self.guild)
 
             # Fetch the real url
             logger.debug(f"Current: {self.current}...")
@@ -358,7 +342,7 @@ class MusicPlayer:
                 title = "Error"
                 desc = f"There was an error reading this source url. \n{music.title}.\n{e}"
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-                await self._channel.send(embed=embed)
+                await self.channel.send(embed=embed)
                 # Read next music
                 continue
             logger.debug("Updated url...")
@@ -381,8 +365,10 @@ class MusicPlayer:
                 description=music.get_desc(True),
                 color=discord.Color.green()
             )
-            self.msg_np = await self._channel.send(embed=embed)
-            await self.msg_np.add_reaction(sign_like)
+            self.msg_np = await self.channel.send(embed=embed)
+            # await self.msg_np.add_reaction("💔")
+            for sign in signs_np:
+                await self.msg_np.add_reaction(sign)
             self.current = music
 
 
@@ -393,17 +379,17 @@ class MusicPlayer:
                 else:
                     time = 300
                 async with timeout(time):
-                    if self._guild.voice_client and self._guild.voice_client.is_connected:
-                        self._guild.voice_client.play(
-                            source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set())
+                    if self.guild.voice_client and self.guild.voice_client.is_connected:
+                        self.guild.voice_client.play(
+                            source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next_event.set())
                         )
                     else:
                         # In case of -next command but the vc is disconnected.
                         title = "Error"
                         desc = "I'm not playing."
                         embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-                        self.msg_np = await self._channel.send(embed=embed)
-                    await self.next.wait()
+                        self.msg_np = await self.channel.send(embed=embed)
+                    await self.next_event.wait()
                     if self.current and self.current.loop > 1:
                         logger.debug("Reduce loop!")
                         self.current.loop -= 1
@@ -415,7 +401,7 @@ class MusicPlayer:
                         description="Failed to play: Timeout. Skip to next music.",
                         color=discord.Color.red()
                 )
-                await self._channel.send(embed=embed)
+                await self.channel.send(embed=embed)
                 continue
 
             if self.loop and self.current.loop == 1:
@@ -424,7 +410,7 @@ class MusicPlayer:
                 break
 
     def destroy(self, guild):
-        return self.bot.loop.create_task(self._cog.cleanup(guild))
+        return self.bot.loop.create_task(self.cog.cleanup(guild))
 
 
 class Streamer(commands.Cog):
@@ -458,23 +444,27 @@ class Streamer(commands.Cog):
             logger.debug("Created a player")
         return player
 
-    async def check_vc(self, ctx) -> Dict:
-        guild_id = ctx.guild.id
+    async def check_vc(self, message) -> Dict:
+        guild_id = message.guild.id
         if str(guild_id) != '808893235103531039':
             logger.debug(f"guild id {guild_id}")
             state = False
             info = "You need to play streamer commands in Catbaron's Server."
             return {'state': state, 'info': info}
 
-        voice = ctx.message.author.voice
+        voice = message.author.voice
         if not voice:
             state = False
             info = "You need to join a VC to run this command."
             return {'state': state, 'info': info}
         vc = voice.channel
         logger.debug("Get player for cmd_check")
-        player = self.get_player(ctx)
-        p_vc = player._guild.voice_client
+        player = self.players.get(guild_id, None)
+        if not player:
+            state = False
+            info = "I'm not playing."
+            return {'state': state, 'info': info}
+        p_vc = player.guild.voice_client
         if p_vc and p_vc.channel != vc:
             state = False
             info = "The bot has joined another VC!"
@@ -492,8 +482,17 @@ class Streamer(commands.Cog):
     )
     async def cmd_stop(self, ctx, *args):
         player = self.get_player(ctx)
-        vc = ctx.voice_client
-        await player.stop(vc)
+        check = await self.check_vc(ctx.message)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
+        await player.stop()
+        # vc = ctx.voice_client
         # if vc and vc.is_connected():
         #     await vc.disconnect()
         del self.players[ctx.guild.id]
@@ -504,11 +503,21 @@ class Streamer(commands.Cog):
         brief='Start the player.'
     )
     async def cmd_start(self, ctx):
-        check = await self.check_vc(ctx)
+        self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
+        check = await self.check_vc(ctx.message)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
@@ -521,16 +530,16 @@ class Streamer(commands.Cog):
         brief='Delete a song (remove from playlist and delete from random list)',
     )
     async def cmd_del(self, ctx, pos: int = 0):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
-        player = self.get_player(ctx)
         if pos > len(player.playlist):
             embed = discord.Embed(
                 title="Error",
@@ -574,11 +583,12 @@ class Streamer(commands.Cog):
         brief='Add a song to the playlist through keywords or youtube url'
     )
     async def cmd_add(self, ctx, *args):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
@@ -593,7 +603,6 @@ class Streamer(commands.Cog):
             logger.debug("Keywords or Youtube URL is expected!")
             return
         logger.debug("Get player for cmd_add")
-        player = self.get_player(ctx)
 
         if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
             logger.debug("Got an url!")
@@ -647,6 +656,15 @@ class Streamer(commands.Cog):
     )
     async def cmd_rl(self, ctx):
         player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
         player.random_list.load()
         title = "Well done!"
         desc = f"{len(player.random_list)} music loaed to random playlist."
@@ -660,7 +678,6 @@ class Streamer(commands.Cog):
         brief="Show the playlist."
     )
     async def cmd_pl(self, ctx, pl: str = None):
-        logger.debug("Get player for cmd_pl")
         player = self.get_player(ctx)
         if not pl or pl == 'playlist':
             playlist = player.playlist
@@ -684,7 +701,7 @@ class Streamer(commands.Cog):
         if player.loop:
             title = sign_list_loop + " " + title
         embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
-        self.msg_pl = await ctx.channel.send(embed=embed)
+        player.msg_np = await ctx.channel.send(embed=embed)
 
     @commands.command(
         name='restart',
@@ -692,6 +709,16 @@ class Streamer(commands.Cog):
         brief="Restart the player. Plaeas use it when the player is freezing."
     )
     async def cmd_restart(self, ctx):
+        self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
         await self.cmd_stop(ctx)
         await asyncio.sleep(1)
         await self.cmd_start(ctx)
@@ -702,14 +729,13 @@ class Streamer(commands.Cog):
         brief="Show the current music."
     )
     async def cmd_np(self, ctx):
+        player = self.get_player(ctx)
         if ctx.guild.id not in self.players:
             title = "Error"
             desc = "Failed to run command: I'm not playing."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
-        logger.debug("Get player for cmd_np")
-        player = self.get_player(ctx)
         music = player.current
         if not music:
             title = "Error"
@@ -720,7 +746,8 @@ class Streamer(commands.Cog):
         desc = music.get_desc(playing=True)
         embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
         player.msg_np = await ctx.channel.send(embed=embed)
-        await player.msg_np.add_reaction(sign_like)
+        for sign in signs_np:
+            await player.msg_np.add_reaction(sign)
 
 
     @commands.command(
@@ -730,17 +757,17 @@ class Streamer(commands.Cog):
         brief="repeat the current music for up to 10 times."
     )
     async def cmd_repeat(self, ctx, times: int):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_replay")
-        player = self.get_player(ctx)
         if not player.current:
             title = "Error"
             desc = "Failed to run command: I'm not playing!"
@@ -772,17 +799,17 @@ class Streamer(commands.Cog):
         brief="Set the switch of loop on the playlist."
     )
     async def cmd_toggle_loop_list(self, ctx, switch):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_loop")
-        player = self.get_player(ctx)
         if switch == 'on':
             player.loop = True
             title = "Well done!"
@@ -808,20 +835,22 @@ class Streamer(commands.Cog):
         brief="Play next music."
     )
     async def cmd_next(self, ctx):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
-        vc = ctx.voice_client
-        if not vc.is_playing():
-            return
-        else:
-            vc.stop()
+        player.stop()
+        # vc = ctx.voice_client
+        # if not vc.is_playing():
+        #     return
+        # else:
+        #     vc.stop()
 
     @commands.command(
         name='pick',
@@ -830,17 +859,17 @@ class Streamer(commands.Cog):
         brief="Pick a music to the top of playlist."
     )
     async def cmd_pick(self, ctx, pos: int):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_pick")
-        player = self.get_player(ctx)
         if 0 < pos <= len(player.playlist):
             music = player.playlist.pop(pos - 1)
             player.playlist.put(music)
@@ -862,36 +891,28 @@ class Streamer(commands.Cog):
         brief="Remove a music from the playlist."
     )
     async def cmd_rm(self, ctx, pos: int):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
-                    description="Failed to run command: {check['info']}",
+                    description=f"Failed to run command: {check['info']}",
                     color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_rm")
-        player = self.get_player(ctx)
 
-        # if pos == 0:
-        #     player.playlist.clear()
-        #     title = "Well done!"
-        #     desc = "Playlist cleared."
-        #     embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-        #     await ctx.message.reply(embed=embed)
-        #     return
         if 0 < pos <= len(player.playlist):
             rm = player.playlist.pop(pos - 1)
             title = "Well done!"
             desc = f"Music removied: {rm.title}."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-            await ctx.message.reply(embed=embed)
         else:
             title = "Error"
             desc = "Failed to run command! Invalid argument: `pos`!"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-            await ctx.message.reply(embed=embed)
+        await ctx.message.reply(embed=embed)
 
 
     @commands.command(
@@ -901,7 +922,8 @@ class Streamer(commands.Cog):
         brief="Remove all the musics."
     )
     async def cmd_clear(self, ctx):
-        check = await self.check_vc(ctx)
+        player = self.get_player(ctx)
+        check = await self.check_vc(ctx.message)
         if not check['state']:
             embed = discord.Embed(
                     title="Error",
@@ -911,7 +933,6 @@ class Streamer(commands.Cog):
             await ctx.message.reply(embed=embed)
             return
         logger.debug("Get player for cmd_clear")
-        player = self.get_player(ctx)
         player.playlist.clear()
         title = "Well done!"
         desc = "The playlist is cleared."
@@ -924,15 +945,54 @@ class Streamer(commands.Cog):
         msg = reaction.message
         player = self.players[msg.guild.id]
         logger.debug(f'A reaction is added: {reaction}')
+        check = await self.check_vc(reaction.message)
+        if not check['state']:
+            return
         if user == msg.author:
             logger.debug("The reaction is sent by me!")
             return
         if msg != player.msg_np:
             logger.debug("Not the np_msg!")
             return
-        if reaction.emoji == sign_like:
+        if reaction.emoji in sign_like:
             title = "YEAH!"
-            desc = f"{user.mention} liked this music!"
+            users = await reaction.users().flatten()
+            users = ["@" + u.name for u in users if u != msg.author and u != user]
+            desc = f"{user.mention} loves this music!"
+            if len(users) > 0:
+                # besides mr.white and you
+                desc += "  Those people all love this music!: \n\n > "
+                desc += ", ".join(users)
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await reaction.message.channel.send(embed=embed)
+        if reaction.emoji == sign_next:
+            await player.next()
+        if reaction.emoji == sign_dislike:
+            music = player.current
+            # Remove it from random_list
+            player.random_list.remove(music)
+            # Remove player.current
+            loop = player.loop
+            player.loop = False
+            player.current.loop = 0
+            await player.next()
+            player.loop = loop
+        if reaction.emoji == sign_single_loop:
+            player.current.loop = 10
 
+    @commands.Cog.listener()
+    async def on_reaction_remove(self, reaction, user):
+        msg = reaction.message
+        player = self.players[msg.guild.id]
+        logger.debug(f'A reaction is added: {reaction}')
+        check = await self.check_vc(reaction.message)
+        if not check['state']:
+            return
+        if user == msg.author:
+            logger.debug("The reaction is sent by me!")
+            return
+        if msg != player.msg_np:
+            logger.debug("Not the np_msg!")
+            return
+        if reaction.emoji == sign_single_loop:
+            player.current.loop = 0
