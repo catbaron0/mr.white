@@ -126,6 +126,7 @@ class Music:
     url: str = None
     duration = None
     loop: int = 1
+    volume: float = 0.3
 
     async def update_info(self, loop):
         to_run = partial(ytdl.extract_info, url=self.web_url, download=False)
@@ -174,20 +175,77 @@ class Music:
         return self.name < other.name
 
 
+class MusicList:
+    def __init__(self, maxlen: int = None, fn: Path = None):
+        self.dq = deque(maxlen=maxlen)
+        self.fn = fn
+
+    def put(self, music):
+        self.dq.append(music)
+        self.save()
+
+    def get(self):
+        return self.dq.leftpop()
+
+    def remove(self, music):
+        logger.debug(f"Before removal! {len(self)}")
+        self.dq.remove(music)
+        logger.debug(f"After removal! {len(self)}")
+        self.save()
+
+    def pop(self, i):
+        music = self.dq[i]
+        self.remove(music)
+        return music
+
+    def sample(self):
+        return random.sample(self.dq, 1)[0]
+
+    def save(self):
+        with open(self.fn, 'w') as f:
+            for music in self.dq:
+                f.write(f"{music.title}\t{music.web_url}\n")
+        logger.debug(f"List saved to {self.fn}")
+
+    def clear(self):
+        self.dq.clear()
+
+    def load(self):
+        fn = self.fn
+        if not fn.exists():
+            fn.touch()
+            return
+        logger.debug(f"Loading from {self.fn}")
+        self.dq.clear()
+        with open(fn, 'r') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                title, web_url = line.strip().split('\t')
+                music = Music(title=title, web_url=web_url)
+                self.dq.append(music)
+        logger.debug(f"The music list is updated!: {len(self.dq)}")
+
+    def __len__(self):
+        return len(self.dq)
+
+    def __getitem__(self, idx):
+        return list(self.dq)[idx]
+
+
 class MusicPlayer:
     __slots__ = (
-        'bot', '_guild', '_channel', '_cog', 'queue', 'next', 'f_random_list', 'random_list',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop',
+        'bot', '_guild', '_channel', '_cog', 'playlist', 'next', 'f_random_list', 'random_list',
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path'
     )
 
-    def __init__(self, ctx, f_random_list: Path):
+    def __init__(self, ctx, config_path: Path):
         self.bot = ctx.bot
         self._guild = ctx.guild
         self._channel = ctx.channel
         self._cog = ctx.cog
+        self.config_path = config_path
 
-        # self.queue = asyncio.Queue()
-        self.queue = list()
         self.next = asyncio.Event()
 
         self.msg_np = None
@@ -196,36 +254,38 @@ class MusicPlayer:
         self.current = None
         self.loop = False
 
-        self.f_random_list = f_random_list
-        self.random_list = self.load_list_from_file(self.f_random_list)
+        f_random_list = self.config_path / f"music.{ctx.guild.id}"
+        self.random_list = MusicList(maxlen=500, fn= f_random_list)
+        self.random_list.load()
+        self.playlist = MusicList()
         logger.debug(f"Len(random_list): {len(self.random_list)}")
 
         self.bot.loop.create_task(self.player_loop())
 
-    def load_list_from_file(self, fn):
-        if not self.f_random_list.exists():
-            logger.debug("File does not exist!")
-            return
-        logger.debug(f"Loading from {self.f_random_list}")
-        ml = deque(maxlen=100)
-        with open(self.f_random_list, 'r') as f:
-            for line in f:
-                # logger.debug("Test empty lines")
-                if not line.strip():
-                    continue
-                # logger.debug("Obtain title and web_url")
-                title, web_url = line.strip().split('\t')
-                # logger.debug(f"Music(title={title}, web_url={web_url})")
-                music = Music(title=title, web_url=web_url)
-                # logger.debug("Put music.")
-                ml.append(music)
-        logger.debug(f"The music list is updated!: {len(ml)}")
-        return ml
+    # def load_list_from_file(self, fn):
+    #     if not self.f_random_list.exists():
+    #         logger.debug("File does not exist!")
+    #         return
+    #     logger.debug(f"Loading from {self.f_random_list}")
+    #     ml = deque(maxlen=500)
+    #     with open(self.f_random_list, 'r') as f:
+    #         for line in f:
+    #             # logger.debug("Test empty lines")
+    #             if not line.strip():
+    #                 continue
+    #             # logger.debug("Obtain title and web_url")
+    #             title, web_url = line.strip().split('\t')
+    #             # logger.debug(f"Music(title={title}, web_url={web_url})")
+    #             music = Music(title=title, web_url=web_url)
+    #             # logger.debug("Put music.")
+    #             ml.append(music)
+    #     logger.debug(f"The music list is updated!: {len(ml)}")
+    #     return ml
 
-    def save_random_list(self):
-        with open(self.f_random_list, 'w') as f:
-            for music in self.random_list:
-                f.write(f"{music.title}\t{music.web_url}\n")
+    # def save_list(self, plist):
+    #     with open(self.f_random_list, 'w') as f:
+    #         for music in plist:
+    #             f.write(f"{music.title}\t{music.web_url}\n")
 
     async def get_music(self):
         '''
@@ -237,13 +297,13 @@ class MusicPlayer:
             if self.current and  self.current.loop > 1:
                 # For single loop
                 return self.current
-            if self.queue:
-                music = self.queue.pop(0)
-                logger.debug(f"Get a music from the queue: {music} ...")
+            if self.playlist:
+                music = self.playlist.get()
+                logger.debug(f"Get a music from the playlist: {music} ...")
                 return music
             elif self.random_list:
-                music = random.sample(self.random_list, 1)[0]
-                logger.debug(f"Get a music from the random queue: {music}...")
+                music = self.random_list.sample()
+                logger.debug(f"Get a music from the random list: {music}...")
                 return music
 
             logger.debug(f"Len(random_list): {len(self.random_list)}")
@@ -285,6 +345,7 @@ class MusicPlayer:
             # Generate the source to play
             try:
                 options = '-vn -sn'
+                # source = FFmpegPCMAudio(
                 source = FFmpegOpusAudio(
                     music.url, bitrate=256, before_options='-copyts -err_detect ignore_err', options=options
                 )
@@ -337,7 +398,7 @@ class MusicPlayer:
                 continue
 
             if self.loop and self.current.loop == 1:
-                self.queue.append(music)
+                self.playlist.put(music)
 
     def destroy(self, guild):
         return self.bot.loop.create_task(self._cog.cleanup(guild))
@@ -369,8 +430,7 @@ class Streamer(commands.Cog):
             player = self.players[ctx.guild.id]
         except KeyError:
             logger.debug("Trying to create a player")
-            f_random_list = self.config_path / f"music.{ctx.guild.id}"
-            player = MusicPlayer(ctx, f_random_list)
+            player = MusicPlayer(ctx, self.config_path)
             self.players[ctx.guild.id] = player
             logger.debug("Created a player")
         return player
@@ -405,7 +465,6 @@ class Streamer(commands.Cog):
     @commands.command(
         name='stop',
         aliases=['quit'],
-        guild='808893235103531039',
         brief='Stop playing.'
     )
     async def cmd_stop(self, ctx, *args):
@@ -415,9 +474,60 @@ class Streamer(commands.Cog):
             del self.players[ctx.guild.id]
 
     @commands.command(
+        name='del',
+        brief='Delete a song',
+    )
+    async def cmd_del(self, ctx, pos: int = 0):
+        check = await self.check_vc(ctx)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description="Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
+        player = self.get_player(ctx)
+        if pos > len(player.playlist):
+            embed = discord.Embed(
+                title="Error",
+                description="Failed to run command: Invalid argument: `pos`!",
+                color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+
+        try:
+            if pos == 0:
+                music = player.current
+                # Remove it from random_list
+                player.random_list.remove(music)
+                # Remove player.current
+                loop = player.loop
+                player.loop = False
+                player.current.loop = 0
+                await self.cmd_next(ctx)
+                player.loop = loop
+            else:
+                music = player.playlist[pos - 1]
+                player.random_list.remove(music)
+                player.playlist.remove(music)
+            embed = discord.Embed(
+                title="Well done!",
+                description=f"The music is deleted: {music.title}",
+                color=discord.Color.green()
+            )
+        except Exception as e:
+            embed = discord.Embed(
+                title="Error",
+                description=f"Failed to run command: {e}",
+                color=discord.Color.red()
+            )
+        await ctx.message.reply(embed=embed)
+
+
+    @commands.command(
         name='add',
         aliases=['play', 'p'],
-        guild='808893235103531039',
         brief='Add a song to the playlist through keywords or youtube url'
     )
     async def cmd_add(self, ctx, *args):
@@ -459,21 +569,20 @@ class Streamer(commands.Cog):
         new_music = list()
         for item in items:
             music = Music(requester=requester, title=item['title'], web_url=item['web_url'])
-            # await player.queue.put(music)
             if music not in player.random_list:
                 _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
-                player.random_list.append(_music)
+                player.random_list.put(_music)
                 player.save_random_list()
             else:
                 logger.debug(f"It's in the list {music}")
-            if music in player.queue:
+            if music in player.playlist:
                 title = "Warning"
                 desc =  "This music is already in the playlist: {music.title}."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await ctx.message.reply(embed=embed)
             else:
                 new_music.append(music.title)
-                player.queue.append(music)
+                player.playlist.put(music)
         if len(new_music) == 1:
             logger.debug(f"Queued a music: {new_music[0]}.")
             title = "Well done!"
@@ -493,12 +602,10 @@ class Streamer(commands.Cog):
         brief="Reload random playlist."
     )
     async def cmd_rl(self, ctx):
-        i = 0
-        for player in self.players.values():
-            player.random_list = player.load_list_from_file(player.f_random_list)
-            i += 1
+        player = self.get_player(ctx)
+        player.random_list.load()
         title = "Well done!"
-        desc = f"{i} player reloaded."
+        desc = f"{len(player.random_list)} music loaed to random playlist."
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
         await ctx.message.reply(embed=embed)
 
@@ -508,10 +615,13 @@ class Streamer(commands.Cog):
         aliases=['playlist', 'q'],
         brief="Print the playlist."
     )
-    async def cmd_pl(self, ctx):
+    async def cmd_pl(self, ctx, pl: str = None):
         logger.debug("Get player for cmd_pl")
         player = self.get_player(ctx)
-        playlist = player.queue
+        if not pl or pl == 'playlist':
+            playlist = player.playlist
+        elif pl == 'random':
+            playlist = player.random_list
         music = player.current
         if not music:
             title = "Error"
@@ -675,9 +785,9 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_pick")
         player = self.get_player(ctx)
-        if 0 < pos <= len(player.queue):
-            music = player.queue.pop(pos - 1)
-            player.queue.insert(0, player.queue.pop(pos - 1))
+        if 0 < pos <= len(player.playlist):
+            music = player.playlist.pop(pos - 1)
+            player.playlist.put(music)
             title = "Well done!"
             desc = f"One music is picked: {music.title}"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green()
@@ -685,7 +795,7 @@ class Streamer(commands.Cog):
             await ctx.message.reply(embed=embed)
         else:
             title = "Error"
-            desc = "Failed to run command !Invalid pos!"
+            desc = "Failed to run command !Invalid argument: pos!"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
 
@@ -708,22 +818,22 @@ class Streamer(commands.Cog):
         logger.debug("Get player for cmd_rm")
         player = self.get_player(ctx)
 
-        if pos == 0:
-            player.queue = list()
-            title = "Well done!"
-            desc = "Playlist cleared."
-            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-            await ctx.message.reply(embed=embed)
-            return
-        if 0 < pos < len(player.queue):
-            rm = player.queue.pop(pos - 1)
+        # if pos == 0:
+        #     player.playlist.clear()
+        #     title = "Well done!"
+        #     desc = "Playlist cleared."
+        #     embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        #     await ctx.message.reply(embed=embed)
+        #     return
+        if 0 < pos <= len(player.playlist):
+            rm = player.playlist.pop(pos - 1)
             title = "Well done!"
             desc = f"Music removied: {rm.title}."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
         else:
             title = "Error"
-            desc = "Failed to run command! Invalid pos!"
+            desc = "Failed to run command! Invalid argument: `pos`!"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
 
@@ -746,9 +856,9 @@ class Streamer(commands.Cog):
             return
         logger.debug("Get player for cmd_clear")
         player = self.get_player(ctx)
-        player.queue = list()
+        player.playlist.clear()
         title = "Well done!"
-        desc = "Playlist cleared."
+        desc = "The playlist is cleared."
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
         await ctx.message.reply(embed=embed)
         return
