@@ -54,9 +54,12 @@ ytdlopts = {
 ytdl = youtube_dl.YoutubeDL(ytdlopts)
 pafy.set_api_key('AIzaSyCwRtNtJFfKTm_s5a8YmRTN1gpdMCiUCFg')
 
-single_loop_sign = "🔂"
-list_loop_sign = "🔄"
-play_sign = "▶️"
+sign_single_loop = "🔂"
+sign_list_loop= "🔄"
+sign_play = "▶️"
+sign_next = "▶️"
+sign_like = '❤️'
+
 
 def info_keywords(key_words: str) -> str:
     '''
@@ -141,9 +144,9 @@ class Music:
         user = self.requester if self.requester else "Random"
         head = ""
         if self.loop > 1:
-            head = f"{single_loop_sign}(x{self.loop}) " + head
+            head = f"{sign_single_loop}(x{self.loop}) " + head
         if playing:
-            head = play_sign + " " + head
+            head = sign_play + " " + head
         return f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}]"
 
 
@@ -185,7 +188,7 @@ class MusicList:
         self.save()
 
     def get(self):
-        return self.dq.leftpop()
+        return self.dq.popleft()
 
     def remove(self, music):
         logger.debug(f"Before removal! {len(self)}")
@@ -202,6 +205,8 @@ class MusicList:
         return random.sample(self.dq, 1)[0]
 
     def save(self):
+        if not self.fn:
+            return
         with open(self.fn, 'w') as f:
             for music in self.dq:
                 f.write(f"{music.title}\t{music.web_url}\n")
@@ -236,7 +241,7 @@ class MusicList:
 class MusicPlayer:
     __slots__ = (
         'bot', '_guild', '_channel', '_cog', 'playlist', 'next', 'f_random_list', 'random_list',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path'
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit'
     )
 
     def __init__(self, ctx, config_path: Path):
@@ -254,13 +259,29 @@ class MusicPlayer:
         self.current = None
         self.loop = False
 
-        f_random_list = self.config_path / f"music.{ctx.guild.id}"
-        self.random_list = MusicList(maxlen=500, fn= f_random_list)
+        f_random_list = self.config_path / f"random.{ctx.guild.id}"
+        self.random_list = MusicList(maxlen=500, fn=f_random_list)
         self.random_list.load()
-        self.playlist = MusicList()
+        f_play_list = self.config_path / f"play.{ctx.guild.id}"
+        self.playlist = MusicList(fn=f_play_list)
+        self.playlist.load()
         logger.debug(f"Len(random_list): {len(self.random_list)}")
+        self.start()
+        self.is_exit = False
 
+    def start(self):
         self.bot.loop.create_task(self.player_loop())
+        self.is_exit = False
+
+    async def stop(self, vc):
+        self.is_exit = True
+        if vc and vc.is_connected():
+            await vc.disconnect()
+        if not vc.is_playing():
+            return
+        else:
+            vc.stop()
+
 
     # def load_list_from_file(self, fn):
     #     if not self.f_random_list.exists():
@@ -300,6 +321,7 @@ class MusicPlayer:
             if self.playlist:
                 music = self.playlist.get()
                 logger.debug(f"Get a music from the playlist: {music} ...")
+                self.playlist.save()
                 return music
             elif self.random_list:
                 music = self.random_list.sample()
@@ -328,7 +350,6 @@ class MusicPlayer:
                 return self.destroy(self._guild)
 
             # Fetch the real url
-            logger.debug(f"Got music: {music}...")
             logger.debug(f"Current: {self.current}...")
             logger.debug("Updating url...")
             try:
@@ -361,7 +382,7 @@ class MusicPlayer:
                 color=discord.Color.green()
             )
             self.msg_np = await self._channel.send(embed=embed)
-            await self.msg_np.add_reaction('❤️')
+            await self.msg_np.add_reaction(sign_like)
             self.current = music
 
 
@@ -399,6 +420,8 @@ class MusicPlayer:
 
             if self.loop and self.current.loop == 1:
                 self.playlist.put(music)
+            if self.is_exit:
+                break
 
     def destroy(self, guild):
         return self.bot.loop.create_task(self._cog.cleanup(guild))
@@ -468,10 +491,30 @@ class Streamer(commands.Cog):
         brief='Stop playing.'
     )
     async def cmd_stop(self, ctx, *args):
+        player = self.get_player(ctx)
         vc = ctx.voice_client
-        if vc and vc.is_connected():
-            await vc.disconnect()
-            del self.players[ctx.guild.id]
+        await player.stop(vc)
+        # if vc and vc.is_connected():
+        #     await vc.disconnect()
+        del self.players[ctx.guild.id]
+
+    @commands.command(
+        name='start',
+        aliases=['s'],
+        brief='Start the player.'
+    )
+    async def cmd_start(self, ctx):
+        check = await self.check_vc(ctx)
+        if not check['state']:
+            embed = discord.Embed(
+                    title="Error",
+                    description="Failed to run command: {check['info']}",
+                    color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+            return
+        self.get_player(ctx)
+
 
     @commands.command(
         name='del',
@@ -572,7 +615,6 @@ class Streamer(commands.Cog):
             if music not in player.random_list:
                 _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
                 player.random_list.put(_music)
-                player.save_random_list()
             else:
                 logger.debug(f"It's in the list {music}")
             if music in player.playlist:
@@ -595,6 +637,8 @@ class Streamer(commands.Cog):
             desc = f"Queued {len(new_music)} musics."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
+        if not player.current.requester:
+            await self.cmd_next(ctx)
 
     @commands.command(
         name='rl',
@@ -636,13 +680,24 @@ class Streamer(commands.Cog):
             for i, music in enumerate(playlist[:15]):
                 desc_i = music.get_desc(playing=False)
                 desc.append(f"{i+1:<3d} {desc_i}")
-
-        embed = discord.Embed(title="Playlist", description='\n'.join(desc), color=discord.Color.green())
+        title = "Playlist"
+        if player.loop:
+            title = sign_list_loop + " " + title
+        embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
         self.msg_pl = await ctx.channel.send(embed=embed)
 
     @commands.command(
+        name='restart',
+        aliases=['rs'],
+        brief="Restart the player. Plaeas use it when the player stop playing."
+    )
+    async def cmd_restart(self, ctx):
+        await self.cmd_stop(ctx)
+        await asyncio.sleep(1)
+        await self.cmd_start(ctx)
+
+    @commands.command(
         name='playing',
-        guild='808893235103531039',
         aliases=['np', 'current', 'cur'],
         brief="Show the current music."
     )
@@ -665,7 +720,7 @@ class Streamer(commands.Cog):
         desc = music.get_desc(playing=True)
         embed = discord.Embed(title="Now playing", description=desc, color=discord.Color.green())
         player.msg_np = await ctx.channel.send(embed=embed)
-        await player.msg_np.add_reaction('❤️')
+        await player.msg_np.add_reaction(sign_like)
 
 
     @commands.command(
@@ -862,3 +917,21 @@ class Streamer(commands.Cog):
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
         await ctx.message.reply(embed=embed)
         return
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        msg = reaction.message
+        player = self.players[msg.guild.id]
+        logger.debug(f'A reaction is added: {reaction}')
+        if user == msg.author:
+            logger.debug("The reaction is sent by me!")
+            return
+        if msg != player.msg_np:
+            logger.debug("Not the np_msg!")
+            return
+        if reaction.emoji == sign_like:
+            title = "YEAH!"
+            desc = f"{user.mention} liked this music!"
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            await reaction.message.channel.send(embed=embed)
+
