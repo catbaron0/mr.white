@@ -40,3 +40,4 @@ You can also type -help category for more info on a category.
 * pafy
 * youtube-dl
 * pypinyin
+* [Transfer](https://github.com/Mikubill/transfer)
