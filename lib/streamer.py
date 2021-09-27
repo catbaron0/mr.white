@@ -263,7 +263,7 @@ class MusicPlayer:
         'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc'
     )
 
-    def __init__(self, ctx, config_path: Path):
+    def __init__(self, ctx, config_path: Path, start=True):
         self.bot = ctx.bot
         self.guild = ctx.guild
         self.channel = ctx.channel
@@ -288,7 +288,9 @@ class MusicPlayer:
         logger.debug(f"Len(random_list): {len(self.random_list)}")
         self.is_exit = False
 
-        self.start()
+        if start:
+            logger.debug("I'm starting")
+            self.start()
 
     def start(self):
         # Run the main loop.
@@ -454,23 +456,28 @@ class Streamer(commands.Cog):
         except KeyError:
             pass
 
-    def get_player(self, ctx):
+    def get_player(self, ctx, start = True):
         try:
             player = self.players[ctx.guild.id]
         except KeyError:
             # Generate a player if it does not exist
-            logger.debug("Trying to create a player")
-            player = MusicPlayer(ctx, self.config_path)
+            logger.debug(f"Trying to create a player, start={start}")
+            player = MusicPlayer(ctx, self.config_path, start=start)
             self.players[ctx.guild.id] = player
             logger.debug("Created a player")
         return player
 
-    async def cmeck_cmd(self, func):
+    def check_cmd(func):
         @wraps(func)
         async def wrapper(self, ctx, *args):
-            self.get_player(ctx)
-            if self.check_vc(ctx.message):
+            start = False
+            logger.debug(f"Trying to create a player, start={start}")
+            player = self.get_player(ctx, start)
+            if await self.check_vc(ctx.message):
+                player.start()
                 return func(self, ctx, *args)
+            else:
+                return
         return wrapper
 
     async def check_vc(self, message, reply=True) -> bool:
@@ -481,7 +488,9 @@ class Streamer(commands.Cog):
         guild_id = message.guild.id
 
         voice = message.author.voice
-        vc = voice.channel
+        vc = None
+        if voice:
+            vc = voice.channel
 
         player = self.players.get(guild_id, None)
         p_vc = player.guild.voice_client
@@ -523,29 +532,29 @@ class Streamer(commands.Cog):
         return success
 
     @commands.command(name='stop', aliases=['quit'], usage="-stop", brief='Stop the player.')
+    @check_cmd
     async def cmd_stop(self, ctx, *args):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         await player.stop()
         del self.players[ctx.guild.id]
 
     @commands.command(name='start', aliases=['s'], usage="-s", brief='Start the player.')
+    @check_cmd
     async def cmd_start(self, ctx):
-        self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
-        self.get_player(ctx)
+        # if not await self.check_vc(ctx.message):
+        #     return
+        # else:
+        #     self.get_player(ctx).start()
+        self.get_player(ctx).start()
 
     @commands.command(
         name='del',
         usage="-del 2",
         brief='Delete a song (remove from playlist and delete from random list)',
     )
+    @check_cmd
     async def cmd_del(self, ctx, pos: int = 0):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         if pos > len(player.playlist):
             embed = discord.Embed(
                 title="Error",
@@ -592,10 +601,9 @@ class Streamer(commands.Cog):
         usage=['-add 周杰伦 双节棍'],
         brief='Add a song to the playlist through keywords or youtube url'
     )
+    @check_cmd
     async def cmd_add(self, ctx, *args):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         requester = ctx.message.author
         query = ' '.join(args)
         if not query.strip():
@@ -661,17 +669,19 @@ class Streamer(commands.Cog):
             await player.next()
 
     @commands.command(name='reload', aliases=['rl'], usage="-rl", brief="Reload random playlist.")
+    @check_cmd
     async def cmd_reload(self, ctx):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         player.random_list.load()
         title = "Well done!"
         desc = f"{len(player.random_list)} music loaed to random playlist."
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
         await ctx.message.reply(embed=embed)
 
-    @commands.command(name='playlist', aliases=['pl', 'q'], usage="-pl [random|playlist]", brief="Show the playlist.")
+    @commands.command(
+            name='playlist', aliases=['pl', 'q'],
+            usage="-pl [random|playlist]", brief="Show the playlist."
+    )
     async def cmd_pl(self, ctx, pl: str = None):
         player = self.get_player(ctx)
         if not pl or pl == 'playlist':
@@ -701,10 +711,8 @@ class Streamer(commands.Cog):
         usage="-rs",
         brief="Restart the player. Plaeas use it when the player is freezing."
     )
+    @check_cmd
     async def cmd_restart(self, ctx):
-        self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         await self.cmd_stop(ctx)
         await asyncio.sleep(1)
         await self.cmd_start(ctx)
@@ -717,12 +725,6 @@ class Streamer(commands.Cog):
     )
     async def cmd_np(self, ctx):
         player = self.get_player(ctx)
-        # if ctx.guild.id not in self.players:
-        #     title = "Error"
-        #     desc = "Failed to run command: I'm not playing."
-        #     embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-        #     await ctx.message.reply(embed=embed)
-        #     return
         music = player.current
         if not music:
             title = "Error"
@@ -743,10 +745,9 @@ class Streamer(commands.Cog):
         usage="-rp",
         brief="repeat the current music for up to 10 times."
     )
+    @check_cmd
     async def cmd_repeat(self, ctx, times: int):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         if not player.current:
             title = "Error"
             desc = "Failed to run command: I'm not playing!"
@@ -776,10 +777,9 @@ class Streamer(commands.Cog):
         usage="-loop on/off",
         brief="Set the switch of loop on the playlist."
     )
+    @check_cmd
     async def cmd_toggle_loop_list(self, ctx, switch):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         if switch == 'on':
             player.loop = True
             title = "Well done!"
@@ -803,21 +803,18 @@ class Streamer(commands.Cog):
         usage="-n",
         brief="Play next music."
     )
+    @check_cmd
     async def cmd_next(self, ctx):
-        player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
-        await player.next()
+        self.get_player(ctx).next()
 
     @commands.command(
         name='pick',
         aliases=['pk'],
         brief="Pick a music to the top of playlist."
     )
+    @check_cmd
     async def cmd_pick(self, ctx, pos: int):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
         if 0 < pos <= len(player.playlist):
             music = player.playlist.pop(pos - 1)
             player.playlist.put(music)
@@ -837,11 +834,9 @@ class Streamer(commands.Cog):
             usage="-rm 4",
             brief="Remove a music from the playlist."
     )
+    @check_cmd
     async def cmd_rm(self, ctx, pos: int):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
-
         if 0 < pos <= len(player.playlist):
             rm = player.playlist.pop(pos - 1)
             title = "Well done!"
@@ -854,10 +849,9 @@ class Streamer(commands.Cog):
         await ctx.message.reply(embed=embed)
 
     @commands.command(name='clear', aliases=['cl', 'empty'], usage="-cl", brief="Remove all the musics.")
+    @check_cmd
     async def cmd_clear(self, ctx):
         player = self.get_player(ctx)
-        if not await self.check_vc(ctx.message):
-            return
 
         player.playlist.clear()
 
