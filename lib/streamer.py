@@ -488,7 +488,7 @@ class Streamer(commands.Cog):
     @commands.command(
         name='stop',
         aliases=['quit'],
-        brief='Stop playing.'
+        brief='Stop the player.'
     )
     async def cmd_stop(self, ctx, *args):
         player = self.get_player(ctx)
@@ -518,7 +518,7 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='del',
-        brief='Delete a song',
+        brief='Delete a song (remove from playlist and delete from random list)',
     )
     async def cmd_del(self, ctx, pos: int = 0):
         check = await self.check_vc(ctx)
@@ -641,8 +641,8 @@ class Streamer(commands.Cog):
             await self.cmd_next(ctx)
 
     @commands.command(
-        name='rl',
-        aliases=['reload'],
+        name='reload',
+        aliases=['rl'],
         brief="Reload random playlist."
     )
     async def cmd_rl(self, ctx):
@@ -654,10 +654,10 @@ class Streamer(commands.Cog):
         await ctx.message.reply(embed=embed)
 
     @commands.command(
-        name='pl',
+        name='playlist',
         guild='808893235103531039',
-        aliases=['playlist', 'q'],
-        brief="Print the playlist."
+        aliases=['pl', 'q'],
+        brief="Show the playlist."
     )
     async def cmd_pl(self, ctx, pl: str = None):
         logger.debug("Get player for cmd_pl")
@@ -689,7 +689,7 @@ class Streamer(commands.Cog):
     @commands.command(
         name='restart',
         aliases=['rs'],
-        brief="Restart the player. Plaeas use it when the player stop playing."
+        brief="Restart the player. Plaeas use it when the player is freezing."
     )
     async def cmd_restart(self, ctx):
         await self.cmd_stop(ctx)
@@ -697,8 +697,8 @@ class Streamer(commands.Cog):
         await self.cmd_start(ctx)
 
     @commands.command(
-        name='playing',
-        aliases=['np', 'current', 'cur'],
+        name='current',
+        aliases=['np', 'cur', 'playing'],
         brief="Show the current music."
     )
     async def cmd_np(self, ctx):
@@ -724,12 +724,12 @@ class Streamer(commands.Cog):
 
 
     @commands.command(
-        name='replay',
+        name='repeat',
         guild='808893235103531039',
-        aliases=['rp'],
-        brief="Set switch to on to repeat the current music for 10 times."
+        aliases=['rp', 'replay'],
+        brief="repeat the current music for up to 10 times."
     )
-    async def cmd_replay(self, ctx, times: int):
+    async def cmd_repeat(self, ctx, times: int):
         check = await self.check_vc(ctx)
         if not check['state']:
             embed = discord.Embed(
@@ -768,7 +768,8 @@ class Streamer(commands.Cog):
         name='loop',
         guild='808893235103531039',
         aliases=['lp'],
-        brief="Toggle the loop on the playlist. "
+        usage="on/off",
+        brief="Set the switch of loop on the playlist."
     )
     async def cmd_toggle_loop_list(self, ctx, switch):
         check = await self.check_vc(ctx)
@@ -826,7 +827,7 @@ class Streamer(commands.Cog):
         name='pick',
         guild='808893235103531039',
         aliases=['pk'],
-        brief="Pick a music."
+        brief="Pick a music to the top of playlist."
     )
     async def cmd_pick(self, ctx, pos: int):
         check = await self.check_vc(ctx)
