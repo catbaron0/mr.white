@@ -340,7 +340,7 @@ class MusicPlayer:
                 await music.update_info(self.bot.loop)
             except Exception as e:
                 title = "Error"
-                desc = f"There was an error reading this source url. \n{music.title}.\n{e}"
+                desc = f"There was an error reading this source url. \n*{music.title}*.\n{e}"
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                 await self.channel.send(embed=embed)
                 # Read next music
@@ -557,7 +557,7 @@ class Streamer(commands.Cog):
                 loop = player.loop
                 player.loop = False
                 player.current.loop = 0
-                await self.cmd_next(ctx)
+                await player.next()
                 player.loop = loop
             else:
                 music = player.playlist[pos - 1]
@@ -565,7 +565,7 @@ class Streamer(commands.Cog):
                 player.playlist.remove(music)
             embed = discord.Embed(
                 title="Well done!",
-                description=f"The music is deleted: {music.title}",
+                description=f"The music is deleted: *{music.title}*",
                 color=discord.Color.green()
             )
         except Exception as e:
@@ -628,7 +628,7 @@ class Streamer(commands.Cog):
                 logger.debug(f"It's in the list {music}")
             if music in player.playlist:
                 title = "Warning"
-                desc =  "This music is already in the playlist: {music.title}."
+                desc =  "This music is already in the playlist: *{music.title}*."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await ctx.message.reply(embed=embed)
             else:
@@ -647,7 +647,7 @@ class Streamer(commands.Cog):
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
         if not player.current.requester:
-            await self.cmd_next(ctx)
+            await player.next(ctx)
 
     @commands.command(
         name='reload',
@@ -845,7 +845,7 @@ class Streamer(commands.Cog):
             )
             await ctx.message.reply(embed=embed)
             return
-        player.stop()
+        await player.next()
         # vc = ctx.voice_client
         # if not vc.is_playing():
         #     return
@@ -874,7 +874,7 @@ class Streamer(commands.Cog):
             music = player.playlist.pop(pos - 1)
             player.playlist.put(music)
             title = "Well done!"
-            desc = f"One music is picked: {music.title}"
+            desc = f"One music is picked: *{music.title}*"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green()
             )
             await ctx.message.reply(embed=embed)
