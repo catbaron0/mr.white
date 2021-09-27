@@ -286,7 +286,7 @@ class MusicPlayer:
         f_play_list = self.config_path / f"play.{ctx.guild.id}"
         self.playlist = MusicList(fn=f_play_list)
         logger.debug(f"Len(random_list): {len(self.random_list)}")
-        self.is_exit = False
+        self.is_exit = None
 
         if start:
             logger.debug("I'm starting")
@@ -294,16 +294,20 @@ class MusicPlayer:
 
     def start(self):
         # Run the main loop.
-        self.bot.loop.create_task(self.player_loop())
-        self.is_exit = False
+        if self.is_exit is None:
+            self.bot.loop.create_task(self.player_loop())
+            self.is_exit = False
 
     async def next(self):
         # To play next music, just stop current voice_client,
         # and the main player_loop to take over then.
+        logger.info("player.next")
         vc = self.guild.voice_client
         if not vc.is_playing():
+            logger.debug("vs not playing")
             return
         else:
+            logger.debug("stop vs")
             vc.stop()
 
     async def stop(self):
@@ -471,11 +475,10 @@ class Streamer(commands.Cog):
         @wraps(func)
         async def wrapper(self, ctx, *args):
             start = False
-            logger.debug(f"Trying to create a player, start={start}")
             player = self.get_player(ctx, start)
             if await self.check_vc(ctx.message):
                 player.start()
-                return func(self, ctx, *args)
+                return await func(self, ctx, *args)
             else:
                 return
         return wrapper
@@ -575,6 +578,7 @@ class Streamer(commands.Cog):
                 loop = player.loop
                 player.loop = False
                 player.current.loop = 0
+                logger.debug("Next()")
                 await player.next()
                 player.loop = loop
             else:
@@ -805,7 +809,7 @@ class Streamer(commands.Cog):
     )
     @check_cmd
     async def cmd_next(self, ctx):
-        self.get_player(ctx).next()
+        await self.get_player(ctx).next()
 
     @commands.command(
         name='pick',
