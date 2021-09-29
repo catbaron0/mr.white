@@ -440,9 +440,14 @@ class MusicPlayer:
 
 
 class Streamer(commands.Cog):
-    __slots__ = ('bot', 'players')
+    '''
+    暂时开放其他服务起使用观察一下对我自己网络的影响。
+    其他服务器随时会变成不可用状态。
+    '''
+    __slots__ = ('bot', 'players', 'qualified_name')
 
     def __init__(self, bot, config_path):
+        self.qualified_name = "Player"
         self.bot = bot
         self.players = {}
         self.config_path = Path(config_path)
