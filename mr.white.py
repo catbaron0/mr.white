@@ -10,6 +10,7 @@ import lib.cmd as cmd
 from discord.ext import commands
 from lib.streamer import Streamer
 import sys
+from pathlib import Path
 
 
 # bot = Bot(intents=Intents.default(), self_bot=True, command_prefix='/')
@@ -96,6 +97,7 @@ async def on_ready():
 #         await message.reply(reply)
 #     await bot.process_commands(message)
 
-bot.add_cog(Streamer(bot))
+conf_path = Path(__file__).parent.absolute()
+bot.add_cog(Streamer(bot,conf_path))
 
 bot.run(sys.argv[1])
