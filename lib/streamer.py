@@ -139,6 +139,7 @@ class Music:
     duration: int = None
     loop: int = 1
     volume: float = 0.3
+    likes: list = None
 
     async def update_info(self, loop):
         # The real url may be expired, so we need to update it before we play the music.
@@ -260,7 +261,7 @@ class MusicList:
 class MusicPlayer:
     __slots__ = (
         'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_random_list', 'random_list',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc'
+        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc', 'undead'
     )
 
     def __init__(self, ctx, config_path: Path, start=True):
@@ -269,6 +270,7 @@ class MusicPlayer:
         self.channel = ctx.channel
         self.config_path = config_path
         self.cog = ctx.cog
+        self.undead = False
 
         self.next_event = asyncio.Event()
 
@@ -331,13 +333,11 @@ class MusicPlayer:
                 logger.debug(f"Get a music from the playlist: {music} ...")
                 self.playlist.save()
                 return music
-            elif self.random_list:
+            elif self.undead and self.random_list:
                 music = self.random_list.sample()
                 logger.debug(f"Get a music from the random list: {music}...")
                 return music
 
-            logger.debug(f"Len(random_list): {len(self.random_list)}")
-            logger.debug("Nothing to play ...")
             await asyncio.sleep(1)
 
 
@@ -471,6 +471,23 @@ class Streamer(commands.Cog):
             logger.debug("Created a player")
         return player
 
+    def check_requester(func):
+        @wraps(func)
+        async def wrapper(self, ctx, *args):
+            start = False
+            player = self.get_player(ctx, start)
+            if not ctx.author.id != 'catbaron#8242':
+                title = "Warning"
+                info = "This command is limited to @catbaron"
+                color = discord.ui.Color.orange()
+                embed = discord.Embed(title=title, description=info, color=color)
+                await ctx.message.reply(embed=embed)
+                return
+            else:
+                player.start()
+                return await func(self, ctx, *args)
+        return wrapper
+
     def check_cmd(func):
         @wraps(func)
         async def wrapper(self, ctx, *args):
@@ -486,8 +503,6 @@ class Streamer(commands.Cog):
     async def check_vc(self, message, reply=True) -> bool:
         # Check if the user has the permission to run a command
 
-        # Currently this bot can only be run at my own server
-        # for the sake of performance.
         guild_id = message.guild.id
 
         voice = message.author.voice
@@ -498,13 +513,8 @@ class Streamer(commands.Cog):
         player = self.players.get(guild_id, None)
         p_vc = player.guild.voice_client
 
-        if str(guild_id) != '808893235103531039':
-            logger.debug(f"guild id {guild_id}")
-            success = False
-            info = "You need to play streamer commands in Catbaron's Server."
-
         # The user need to join in a voice channel
-        elif not voice:
+        if not voice:
             success = False
             info = "You need to join a VC to run this command."
 
@@ -524,11 +534,7 @@ class Streamer(commands.Cog):
             info = "OK"
         if not success:
             if reply:
-                embed = discord.Embed(
-                        title="Error",
-                        description=f"Failed to run command: {info}",
-                        color=discord.Color.red()
-                )
+                embed = discord.Embed(title="Error", description=f"Failed to run command: {info}", color=discord.Color.red())
                 await message.reply(embed=embed)
             return False
 
@@ -803,13 +809,79 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='next',
-        aliases=['n', 'skip'],
+        aliases=['n', 'skip' 'n!', 'skip!', 'next!'],
         usage="-n",
         brief="Play next music."
     )
     @check_cmd
     async def cmd_next(self, ctx):
-        await self.get_player(ctx).next()
+        player = self.get_player(ctx)
+        music = player.current
+        protectors = list()
+        logger.debug("user: " + str(ctx.author))
+        if not music:
+            player.start()
+            return
+        if ctx.command.name.endswith('!'):
+            player.next()
+            return
+        if music.requester:
+            if music.requester == ctx.message.author:
+                await player.next()
+                return
+            else:
+                protectors.append(music.requester)
+        if music.likes:
+            protectors += music.likes
+        protectors = ["@" + u.name for u in protectors]
+        if protectors:
+            title = "Warning"
+            desc = "This music is pretected by someone: \n >"
+            desc += ', '.join(protectors) + '\n'
+            desc += '\n Try `-n!` if you insist to skip this music.'
+            color = discord.Color.orange()
+            embed = discord.Embed(title=title, description=desc, color=color)
+            await ctx.message.reply(embed=embed)
+            return
+        await player.next()
+
+    @commands.command(
+        name='random',
+        aliases=['rd'],
+        brief="Randomly pick a musci from randomlist."
+    )
+    @check_cmd
+    async def cmd_random(self, ctx):
+        player = self.get_player(ctx)
+        player.playlist
+        if player.random_list:
+            music = player.random_list.sample()
+            player.playlist.put(music)
+            logger.debug(f"Get a music from the random list: {music}...")
+            title = "Well done!"
+            desc = f"Queued a music: {music.title}"
+            color = discord.Color.green()
+        else:
+            title = "Error"
+            desc = "Your random list is empty!"
+            color = discord.Color.red()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        await ctx.message.reply(embed=embed)
+
+    @commands.command(
+        name='keep',
+        aliases=['kp'],
+        brief="Keep this player alive. Limited to catbaron."
+    )
+    @check_cmd
+    @check_requester
+    async def cmd_keep(self, ctx):
+        player = self.get_player(ctx)
+        player.undead = True
+        title = "Well done!"
+        desc = "Okay. I'm undead now."
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='pick',
@@ -839,7 +911,7 @@ class Streamer(commands.Cog):
             brief="Remove a music from the playlist."
     )
     @check_cmd
-    async def cmd_rm(self, ctx, pos: int):
+    async def cmd_rm(self, ctx, pos: int, force: str = ''):
         player = self.get_player(ctx)
         if 0 < pos <= len(player.playlist):
             rm = player.playlist.pop(pos - 1)
