@@ -95,7 +95,7 @@ def info_keywords(key_words: str) -> Dict[str, str]:
     if items:
         item = items[0]
         title = item['snippet']['title']
-        duration = item['snippet']['duration']
+        duration = None
         video_id = item['id']['videoId']
         url = 'https://www.youtube.com/watch?v=' + video_id
         return {'web_url': url, 'title': title, 'duration': duration}
@@ -669,8 +669,9 @@ class Streamer(commands.Cog):
             desc = f"Queued {len(new_music)} musics."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
-        if not player.current.requester:
-            await player.next()
+        # if not player.current.requester:
+        #     await player.next()
+
 
     @commands.command(name='reload', aliases=['rl'], usage="-rl", brief="Reload random playlist.")
     @check_cmd
