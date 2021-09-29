@@ -4,8 +4,8 @@
 This module is designed as a streamer to play youtube-music to a voice channel at Discord.
 The source is extracted by youtube-dl, and the key-word based search is done by pafy.
 '''
-# TODO : Test cmd_add
 from functools import wraps
+import html
 
 from typing import Dict, Optional, List
 from discord import User, FFmpegOpusAudio
@@ -44,6 +44,7 @@ ytdlopts = {
     'format': 'bestaudio/best',
     'restrictfilenames': True,
     'nocheckcertificate': True,
+    'noplaylist': False,
     'ignoreerrors': False,
     'logtostderr': False,
     'quiet': True,
@@ -95,9 +96,9 @@ def info_keywords(key_words: str) -> Dict[str, str]:
     if items:
         item = items[0]
         title = item['snippet']['title']
-        duration = None
         video_id = item['id']['videoId']
         url = 'https://www.youtube.com/watch?v=' + video_id
+        duration = pafy.new(url).length
         return {'web_url': url, 'title': title, 'duration': duration}
 
 
@@ -229,7 +230,7 @@ class MusicList:
             return
         with open(self.fn, 'w') as f:
             for music in self.dq:
-                f.write(f"{music.title}\t{music.web_url}\n")
+                f.write(f"{music.title}\t{music.web_url}\t{music.duration}\n")
         logger.debug(f"List saved to {self.fn}")
 
     def clear(self):
@@ -246,8 +247,16 @@ class MusicList:
             for line in f:
                 if not line.strip():
                     continue
-                title, web_url = line.strip().split('\t')
-                music = Music(title=title, web_url=web_url)
+                try:
+                    title, web_url, duration = line.strip().split('\t')
+                except Exception:
+                    title, web_url = line.strip().split('\t')
+                    duration = 'None'
+                if duration == "None":
+                    duration = None
+                else:
+                    duration = int(duration)
+                music = Music(title=title, web_url=web_url, duration=duration)
                 self.dq.append(music)
         logger.debug(f"The music list is updated!: {len(self.dq)}")
 
@@ -260,7 +269,7 @@ class MusicList:
 
 class MusicPlayer:
     __slots__ = (
-        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_random_list', 'random_list',
+        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_random_list', 'random_list', 'marathon',
         'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc', 'undead'
     )
 
@@ -271,6 +280,7 @@ class MusicPlayer:
         self.config_path = config_path
         self.cog = ctx.cog
         self.undead = False
+        self.marathon = 0
 
         self.next_event = asyncio.Event()
 
@@ -303,6 +313,9 @@ class MusicPlayer:
     async def next(self):
         # To play next music, just stop current voice_client,
         # and the main player_loop to take over then.
+        # self.current.loop = 0
+        # logger.debug("Append current to the playlist")
+        # self.playlist.put(self.current)
         logger.info("player.next")
         vc = self.guild.voice_client
         if not vc.is_playing():
@@ -439,15 +452,17 @@ class MusicPlayer:
         return self.bot.loop.create_task(self.cog.cleanup(guild))
 
 
-class Streamer(commands.Cog):
+class Streamer(commands.Cog, name="Player"):
     '''
     暂时开放其他服务起使用观察一下对我自己网络的影响。
     其他服务器随时会变成不可用状态。
     '''
-    __slots__ = ('bot', 'players', 'qualified_name')
+    __slots__ = ('bot', 'players', 'qualified_name', 'description')
 
     def __init__(self, bot, config_path):
         self.qualified_name = "Player"
+        self.description = "暂时开放其他服务起使用观察一下对我自己网络的影响。\n"
+        self.description += "其他服务器随时会变成不可用状态。"
         self.bot = bot
         self.players = {}
         self.config_path = Path(config_path)
@@ -639,10 +654,20 @@ class Streamer(commands.Cog):
 
         if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
             logger.debug("Got an url!")
-            items = await info_url(query, ctx.bot.loop)
+            if "music.youtube" in query and "playlist" in query:
+                query.replace("music.youtube", "www.youtube")
+            try:
+                async with timeout(10):
+                    items = await info_url(query, ctx.bot.loop)
+            except asyncio.TimeoutError:
+                title = "Error"
+                desc = "Failed to extract info from this url: Time out"
+                embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+                await ctx.message.reply(embed=embed)
+                return
         else:
             logger.debug("Got an keyword query!")
-            item = info_keywords(query)
+            item = info_keywords(html.escape(query.replace("’", "'")))
             if item:
                 items = [item]
         if not items:
@@ -663,12 +688,12 @@ class Streamer(commands.Cog):
             if music in player.random_list:
                 logger.debug(f"It's in the list {music}")
             else:
-                # TODO: to test
-                # _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
-                player.random_list.put(music)
+                _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
+                if _music not in player.random_list:
+                    player.random_list.put(_music)
             if music in player.playlist:
                 title = "Warning"
-                desc =  "This music is already in the playlist: *{music.title}*."
+                desc =  f"This music is already in the playlist: *{music.title}*."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await ctx.message.reply(embed=embed)
             else:
@@ -690,6 +715,23 @@ class Streamer(commands.Cog):
             await ctx.message.reply(embed=embed)
         # if not player.current.requester:
         #     await player.next()
+
+    @commands.command(
+            name='marathon', aliases=['mth'], usage="-mth <num> (num<50)",
+            brief="The player will not stop until it plays enough music."
+    )
+    @check_cmd
+    async def cmd_marathon(self, ctx, num: int):
+        player = self.get_player()
+        if num > 50:
+            num = 50
+        if num > 0:
+            num = 0
+        player.marathon = num
+        title = "Well done!"
+        desc = f"The player will play {num} music before it stops."
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        await ctx.message.reply(embed=embed)
 
 
     @commands.command(name='reload', aliases=['rl'], usage="-rl", brief="Reload random playlist.")
@@ -728,6 +770,7 @@ class Streamer(commands.Cog):
             title = sign_list_loop + " " + title
         embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
         player.msg_np = await ctx.channel.send(embed=embed)
+        #TODO: add reactions
 
     @commands.command(
         name='restart',
@@ -795,31 +838,31 @@ class Streamer(commands.Cog):
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
 
-    @commands.command(
-        name='loop',
-        aliases=['lp'],
-        usage="-loop on/off",
-        brief="Set the switch of loop on the playlist."
-    )
-    @check_cmd
-    async def cmd_toggle_loop_list(self, ctx, switch):
-        player = self.get_player(ctx)
-        if switch == 'on':
-            player.loop = True
-            title = "Well done!"
-            desc = "Start to loop on the playlist."
-            color = discord.Color.green()
-        elif switch == 'off':
-            player.current.loop = False
-            title = "Well done!"
-            desc = "Stop loopping on the playlist."
-            color = discord.Color.green()
-        else:
-            title = "Error"
-            desc = "The switch arguments need to be on/off."
-            color = discord.Color.red()
-        embed = discord.Embed(title=title, description=desc, color=color)
-        await ctx.message.reply(embed=embed)
+    # @commands.command(
+    #     name='loop',
+    #     aliases=['lp'],
+    #     usage="-loop on/off",
+    #     brief="Set the switch of loop on the playlist."
+    # )
+    # @check_cmd
+    # async def cmd_toggle_loop_list(self, ctx, switch):
+    #     player = self.get_player(ctx)
+    #     if switch == 'on':
+    #         player.loop = True
+    #         title = "Well done!"
+    #         desc = "Start to loop on the playlist."
+    #         color = discord.Color.green()
+    #     elif switch == 'off':
+    #         player.current.loop = False
+    #         title = "Well done!"
+    #         desc = "Stop loopping on the playlist."
+    #         color = discord.Color.green()
+    #     else:
+    #         title = "Error"
+    #         desc = "The switch arguments need to be on/off."
+    #         color = discord.Color.red()
+    #     embed = discord.Embed(title=title, description=desc, color=color)
+    #     await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='next',
@@ -829,6 +872,7 @@ class Streamer(commands.Cog):
     )
     @check_cmd
     async def cmd_next(self, ctx):
+        logger.debug(f"cmd: {ctx.command.name}")
         player = self.get_player(ctx)
         music = player.current
         protectors = list()
@@ -850,7 +894,7 @@ class Streamer(commands.Cog):
         protectors = ["@" + u.name for u in protectors]
         if protectors:
             title = "Warning"
-            desc = "This music is pretected by someone: \n >"
+            desc = "This music is pretected by someone: \n > "
             desc += ', '.join(protectors) + '\n'
             desc += '\n Try `-n!` if you insist to skip this music.'
             color = discord.Color.orange()
@@ -980,6 +1024,7 @@ class Streamer(commands.Cog):
             desc = f"{user.mention} loves this music!"
             if len(users) > 0:
                 # besides mr.white and you
+                # TODO: count the likes from music.like
                 desc += "  Those people all love this music!: \n\n > "
                 desc += ", ".join(users)
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
