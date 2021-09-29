@@ -563,6 +563,14 @@ class Streamer(commands.Cog):
     )
     @check_cmd
     async def cmd_del(self, ctx, pos: int = 0):
+        if ctx.author != ctx.guild.owner and ctx.author.id != "catbaron#8242":
+            embed = discord.Embed(
+                title="Error",
+                description="This command is limited to the owner of this Server.",
+                color=discord.Color.red()
+            )
+            await ctx.message.reply(embed=embed)
+
         player = self.get_player(ctx)
         if pos > len(player.playlist):
             embed = discord.Embed(
@@ -810,7 +818,7 @@ class Streamer(commands.Cog):
 
     @commands.command(
         name='next',
-        aliases=['n', 'skip' 'n!', 'skip!', 'next!'],
+        aliases=['next!', 'n', 'n!', 'skip', 'skip!'],
         usage="-n",
         brief="Play next music."
     )
@@ -907,22 +915,31 @@ class Streamer(commands.Cog):
 
     @commands.command(
             name='remove',
-            aliases=['rm'],
+            aliases=['rm', 'remove!', 'rm!'],
             usage="-rm 4",
             brief="Remove a music from the playlist."
     )
     @check_cmd
     async def cmd_rm(self, ctx, pos: int, force: str = ''):
         player = self.get_player(ctx)
-        if 0 < pos <= len(player.playlist):
-            rm = player.playlist.pop(pos - 1)
-            title = "Well done!"
-            desc = f"Music removied: {rm.title}."
-            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-        else:
+        if not 0 < pos <= len(player.playlist):
             title = "Error"
             desc = "Failed to run command! Invalid argument: `pos`!"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
+            await ctx.message.reply(embed=embed)
+            return
+
+        rm = player.playlist.pop(pos - 1)
+        if ctx.command.name.endswith('!') or ctx.author == rm.requester:
+            title = "Well done!"
+            desc = f"Music removied: {rm.title}."
+            color = discord.Color.green()
+        else:
+            title = "Warning"
+            desc = "This music is requested by @{rm.requester.name}.\n"
+            desc += '\n Try `-rm!` if you insist to remove this music.'
+            color = discord.Color.orange()
+            embed = discord.Embed(title=title, description=desc, color=color)
         await ctx.message.reply(embed=embed)
 
     @commands.command(name='clear', aliases=['cl', 'empty'], usage="-cl", brief="Remove all the musics.")
