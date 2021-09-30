@@ -41,3 +41,8 @@ You can also type -help category for more info on a category.
 * youtube-dl
 * pypinyin
 * [Transfer](https://github.com/Mikubill/transfer)
+
+# TODO:
+[_] pause/play
+[_] Pages of playlist
+[_] Update the player UI
