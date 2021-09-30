@@ -43,6 +43,6 @@ You can also type -help category for more info on a category.
 * [Transfer](https://github.com/Mikubill/transfer)
 
 # TODO:
-[_] pause/play
-[_] Pages of playlist
-[_] Update the player UI
+- [ ] pause/play
+- [ ] Pages of playlist
+- [ ] Update the player UI
