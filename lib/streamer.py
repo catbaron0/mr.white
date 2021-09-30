@@ -44,6 +44,7 @@ ytdlopts = {
     'format': 'bestaudio/best',
     'restrictfilenames': True,
     'nocheckcertificate': True,
+    'cookiefile': 'youtube.com_cookies.txt',
     'noplaylist': False,
     'ignoreerrors': False,
     'logtostderr': False,
@@ -144,6 +145,22 @@ class Music:
     loop: int = 1
     volume: float = 0.3
     likes: list = None
+
+    def is_skipable(self, user):
+        if user == self.requester:
+            return True
+        if self.likes and len(self.likes) == 1 and self.likes[0] == user:
+            return True
+        return False
+
+    @property
+    def protectors(self):
+        protectors = list()
+        if self.requester:
+            protectors.append(self.requester)
+        if self.likes:
+            protectors += self.likes
+        return protectors
 
     async def update_info(self, loop):
         # The real url may be expired, so we need to update it before we play the music.
@@ -911,15 +928,11 @@ class Streamer(commands.Cog, name="Player"):
         if ctx.command.name.endswith('!'):
             player.next()
             return
-        if music.requester:
-            if music.requester == ctx.message.author:
-                await player.next()
-                return
-            else:
-                protectors.append(music.requester)
-        if music.likes:
-            protectors += music.likes
-        protectors = ["@" + u.name for u in protectors]
+        if music.is_skipable(ctx.author):
+            player.next()
+            return
+        protectors = ["@" + u.name for u in music.protectors]
+        logger.debug(f"Protectors: {protectors}")
         if protectors:
             title = "Warning"
             desc = "This music is pretected by someone: \n > "
@@ -1071,13 +1084,14 @@ class Streamer(commands.Cog, name="Player"):
             return
         if reaction.emoji in sign_like:
             title = "YEAH!"
-            users = await reaction.users().flatten()
-            users = ["@" + u.name for u in users if u != msg.author and u != user]
+            if player.current.likes is None:
+                player.current.likes = list()
+            player.current.likes.append(user)
+            users = ["@" + u.name for u in player.current.likes if u != msg.author]
             desc = f"{user.mention} loves this music!"
-            if len(users) > 0:
+            if len(users) > 1:
                 # besides mr.white and you
-                # TODO: count the likes from music.like
-                desc += "  Those people all love this music!: \n\n > "
+                desc += "  Those people all love this music: \n\n > "
                 desc += ", ".join(users)
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await reaction.message.channel.send(embed=embed)
