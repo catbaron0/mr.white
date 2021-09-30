@@ -155,7 +155,7 @@ class Music:
 
     def get_desc(self, playing: bool) -> str:
         # Genenrate str to display as the content of  Discord message.
-        user = self.requester if self.requester else "Random"
+        user = "@" + self.requester.name if self.requester else "Random"
         head = ""
         if self.loop > 1:
             head = f"{sign_single_loop}(x{self.loop}) " + head
@@ -204,8 +204,11 @@ class MusicList:
         if fn:
             self.load()
 
-    def put(self, music):
-        self.dq.append(music)
+    def put(self, music, left=False):
+        if left:
+            self.dq.appendleft(music)
+        else:
+            self.dq.append(music)
         self.save()
 
     def get(self):
@@ -327,6 +330,7 @@ class MusicPlayer:
 
     async def stop(self):
         # Stop the player.
+        self.playerlist.put(self.current, left=True)
         self.is_exit = True
         await self.next()
         vc = self.guild.voice_client
@@ -925,6 +929,30 @@ class Streamer(commands.Cog, name="Player"):
             color = discord.Color.red()
         embed = discord.Embed(title=title, description=desc, color=color)
         await ctx.message.reply(embed=embed)
+
+    @commands.command(
+        name='update-random',
+        aliases=['ur'],
+        brief="Update duration of music in  random list."
+    )
+    @check_cmd
+    @check_requester
+    async def cmd_ur(self, ctx):
+        player = self.get_player(ctx)
+        random_list = player.random_list
+        updated = 0
+        for music in random_list:
+            if not music.duration:
+                updated += 1
+                logger.info(f"Updating {music}")
+                await asyncio.sleep(2)
+                await music.update_info(ctx.bot.loop)
+                random_list.save()
+        title = "Well done!"
+        desc = f"{updated} music is upated."
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+        await ctx.message.reply(embed=embed)
+
 
     @commands.command(
         name='keep',
