@@ -117,6 +117,9 @@ async def info_url(web_url: str, loop) -> List[Dict[str, str]]:
     except Exception as e:
         logger.error(f"Failed to fetch playlist url: {web_url}\n{e}")
         return None
+    if not res:
+        logger.error(f"Failed to fetch playlist url: {web_url}")
+        return None
     if 'entries' in res:
         # res get the key of 'entries' if it's a playlist
         res = res['entries']
@@ -671,8 +674,9 @@ class Streamer(commands.Cog, name="Player"):
             color = discord.Color.blue()
             embed = discord.Embed(title=title, description=desc, color=color)
             await reply.edit(embed=embed)
-            if "music.youtube" in query and "playlist" in query:
-                query.replace("music.youtube", "www.youtube")
+            if "music.youtube.com" in query and "playlist" in query:
+                query = query.replace("music.youtube.com", "www.youtube.com")
+                logger.debug(f"Updted the query to :{query}")
             try:
                 async with timeout(10):
                     items = await info_url(query, ctx.bot.loop)
