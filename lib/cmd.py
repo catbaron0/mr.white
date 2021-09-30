@@ -170,7 +170,6 @@ class TranslateCMD:
 class Mp3CMD:
     def __init__(self):
         self.ytm = YoutubeMusic('~/www/music', 'mp4', 10)
-        self.url = 'https://catbaron.com/music/'
 
         self.name = 'mp3'
         self.usage = 'KEY WORDS'
@@ -201,12 +200,10 @@ class Mp3CMD:
         )
         stdout, stderr = process.communicate()
         title = target
-        fname = Path(title).name
-        local_link = f"https://catbaron.com/music/{fname}"
 
 
         await reply_msg.edit(content='在传了，等我两分钟...')
-        cmd_info = ['transfer', 'cat', str(title)]
+        cmd_info = ['transfer', 'cow', str(title)]
         process = subprocess.Popen(
             cmd_info,
             stdout=subprocess.PIPE,
@@ -217,9 +214,9 @@ class Mp3CMD:
         print(f"stdout: {stdout}\n")
         output_text = stdout.decode('utf-8').strip().split('\n')
         print(f"output_text: {output_text}\n")
-        stdout = output_text[1].split(": ")[1]
+        # stdout = output_text[1].split(": ")[1]
+        stdout = output_text[1]
         print(f"reply: {stdout}\n")
         stdout.replace('Download Link', '\n下载链接')
-        stdout += f'\n备用: {local_link}'
         await reply_msg.edit(content=stdout)
 
