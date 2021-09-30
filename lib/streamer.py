@@ -587,13 +587,15 @@ class Streamer(commands.Cog, name="Player"):
     )
     @check_cmd
     async def cmd_del(self, ctx, pos: int = 0):
-        if ctx.author != ctx.guild.owner and ctx.author.id != "catbaron#8242":
+        logger.info(f"cmd_del command from: {ctx.author.id}")
+        if ctx.author != ctx.guild.owner and ctx.author.id != "299779237760598017":
             embed = discord.Embed(
                 title="Error",
                 description="This command is limited to the owner of this Server.",
                 color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
+            return
 
         player = self.get_player(ctx)
         if pos > len(player.playlist):
@@ -655,9 +657,20 @@ class Streamer(commands.Cog, name="Player"):
             await ctx.message.reply(embed=embed)
             logger.debug("Keywords or Youtube URL is expected!")
             return
+        title = "Processing"
+        desc = ""
+        color = discord.Color.blue()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        reply = await ctx.message.reply(embed=embed)
 
         if query.startswith('http://') or query.startswith('https://') or query.startswith('www.'):
             logger.debug("Got an url!")
+
+            title = "Processing"
+            desc = "An URL is submitted. I'm extracting information from it...."
+            color = discord.Color.blue()
+            embed = discord.Embed(title=title, description=desc, color=color)
+            await reply.edit(embed=embed)
             if "music.youtube" in query and "playlist" in query:
                 query.replace("music.youtube", "www.youtube")
             try:
@@ -667,10 +680,17 @@ class Streamer(commands.Cog, name="Player"):
                 title = "Error"
                 desc = "Failed to extract info from this url: Time out"
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-                await ctx.message.reply(embed=embed)
+                await reply.edit(embed=embed)
                 return
         else:
             logger.debug("Got an keyword query!")
+
+            title = "Processing"
+            desc = f"I'm searching music for the key words `{query}`"
+            color = discord.Color.blue()
+            embed = discord.Embed(title=title, description=desc, color=color)
+            await reply.edit(embed=embed)
+
             item = info_keywords(html.escape(query.replace("’", "'")))
             if item:
                 items = [item]
@@ -679,7 +699,7 @@ class Streamer(commands.Cog, name="Player"):
             title = "Error"
             desc = "Failed to add a song to the playlist!"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
-            await ctx.message.reply(embed=embed)
+            await reply.edit(embed=embed)
             return
 
         # Generate musci and add it to lists.
@@ -699,7 +719,7 @@ class Streamer(commands.Cog, name="Player"):
                 title = "Warning"
                 desc =  f"This music is already in the playlist: *{music.title}*."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
-                await ctx.message.reply(embed=embed)
+                await reply.edit(embed=embed)
             else:
                 new_music.append(music.title)
                 player.playlist.put(music)
@@ -710,13 +730,13 @@ class Streamer(commands.Cog, name="Player"):
             title = "Well done!"
             desc = f"Queued a music: {new_music[0]}."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-            await ctx.message.reply(embed=embed)
+            await reply.edit(embed=embed)
         elif len(new_music) > 1:
             logger.debug(f"Queued {len(new_music)} musics.")
             title = "Well done!"
             desc = f"Queued {len(new_music)} musics."
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-            await ctx.message.reply(embed=embed)
+            await reply.edit(embed=embed)
         # if not player.current.requester:
         #     await player.next()
 
