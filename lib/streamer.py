@@ -588,7 +588,7 @@ class Streamer(commands.Cog, name="Player"):
     @check_cmd
     async def cmd_del(self, ctx, pos: int = 0):
         logger.info(f"cmd_del command from: {ctx.author.id}")
-        if ctx.author != ctx.guild.owner and ctx.author.id != "299779237760598017":
+        if ctx.author != ctx.guild.owner and str(ctx.author.id) != "299779237760598017":
             embed = discord.Embed(
                 title="Error",
                 description="This command is limited to the owner of this Server.",
