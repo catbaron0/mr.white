@@ -302,7 +302,7 @@ class MusicPlayer:
         self.channel = ctx.channel
         self.config_path = config_path
         self.cog = ctx.cog
-        self.undead = False
+        self.undead = True
         self.marathon = 0
 
         self.next_event = asyncio.Event()
@@ -333,6 +333,10 @@ class MusicPlayer:
             self.bot.loop.create_task(self.player_loop())
             self.is_exit = False
 
+    def is_empty(self):
+        vc = self.guild.voice_client.channel
+        return len(vc.members) == 1
+
     async def next(self):
         # To play next music, just stop current voice_client,
         # and the main player_loop to take over then.
@@ -347,6 +351,15 @@ class MusicPlayer:
         else:
             logger.debug("stop vs")
             vc.stop()
+        if self.is_empty():
+            logger.debug("I'm leaving")
+            title = "Warning"
+            desc = "I'm leaving because there nobody here."
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
+            await self.channel.send(embed=embed)
+
+            await self.stop()
+            self.destroy(self.guild)
 
     async def stop(self):
         # Stop the player.
@@ -761,22 +774,22 @@ class Streamer(commands.Cog, name="Player"):
         # if not player.current.requester:
         #     await player.next()
 
-    @commands.command(
-            name='marathon', aliases=['mth'], usage="-mth <num> (num<50)",
-            brief="The player will not stop until it plays enough music."
-    )
-    @check_cmd
-    async def cmd_marathon(self, ctx, num: int):
-        player = self.get_player()
-        if num > 50:
-            num = 50
-        if num > 0:
-            num = 0
-        player.marathon = num
-        title = "Well done!"
-        desc = f"The player will play {num} music before it stops."
-        embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
-        await ctx.message.reply(embed=embed)
+    # @commands.command(
+    #         name='marathon', aliases=['mth'], usage="-mth <num> (num<50)",
+    #         brief="The player will not stop until it plays enough music."
+    # )
+    # @check_cmd
+    # async def cmd_marathon(self, ctx, num: int):
+    #     player = self.get_player()
+    #     if num > 50:
+    #         num = 50
+    #     if num > 0:
+    #         num = 0
+    #     player.marathon = num
+    #     title = "Well done!"
+    #     desc = f"The player will play {num} music before it stops."
+    #     embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+    #     await ctx.message.reply(embed=embed)
 
 
     @commands.command(name='reload', aliases=['rl'], usage="-rl", brief="Reload random playlist.")
