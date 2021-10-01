@@ -75,7 +75,7 @@ sign_like = '❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💟 ❣️ 💕 �
 sign_dislike = '💔'
 sign_no = '❌'
 
-signs_np = (sign_like[0], sign_play, sign_pause,  sign_next, sign_single_loop)
+signs_np = (sign_like[0], sign_play, sign_pause,  sign_next, sign_single_loop, sign_no)
 
 def info_keywords(key_words: str) -> Dict[str, str]:
     '''
@@ -433,6 +433,24 @@ class MusicPlayer:
             await vc.disconnect()
         self.destroy(self.guild)
 
+    async def del_music(self, pos: int):
+        music = self.playlist[pos]
+        logger.debug("Del from randomlist")
+        self.randomlist.remove(music)
+        if pos > 0:
+            logger.debug("Del from playlist")
+            self.playlist.remove(music)
+        else:
+            # Remove player.current by runing `next` command
+            # As long as the player.loop is false,
+            # current music will be dropped after being played.
+            loop = self.loop
+            self.loop = False
+            self.current.loop = 0
+            await self.next()
+            self.loop = loop
+        return music
+
 
     async def get_music(self):
         # Try to get a musisc from playlist or random list..
@@ -738,22 +756,7 @@ class Streamer(commands.Cog, name="Player"):
             await ctx.message.reply(embed=embed)
 
         try:
-            music = player.playlist[pos]
-            logger.debug("Del from randomlist")
-            player.randomlist.remove(music)
-            if pos > 0:
-                logger.debug("Del from playlist")
-                player.playlist.remove(music)
-            else:
-                # Remove player.current by runing `next` command
-                # As long as the player.loop is false,
-                # current music will be dropped after being played.
-                loop = player.loop
-                player.loop = False
-                player.current.loop = 0
-                await player.next()
-                player.loop = loop
-
+            music = player.del_music(pos)
             embed = discord.Embed(
                 title="Well done!",
                 description=f"The music is deleted: *{music.title}*",
@@ -1103,6 +1106,7 @@ class Streamer(commands.Cog, name="Player"):
         player.playlist
         if player.randomlist:
             music = player.randomlist.sample()
+            music.requester = ctx.author
             player.playlist.put(music)
             logger.debug(f"Get a music from the random list: {music}...")
             title = "Well done!"
@@ -1223,11 +1227,11 @@ class Streamer(commands.Cog, name="Player"):
         if music.is_skipable(ctx.author):
             await self.cmd_rm_f(ctx, pos)
         else:
-            protectors = list()
             protectors = ["@" + u.name for u in music.protectors]
             logger.debug(f"Protectors: {protectors}")
             title = "Warning"
             desc = "This music is pretected by someone: \n > "
+            desc += ', '.join(protectors)
             desc += '\n Try `-rm!` if you insist to remove this music.'
             color = discord.Color.orange()
             embed = discord.Embed(title=title, description=desc, color=color)
@@ -1281,6 +1285,26 @@ class Streamer(commands.Cog, name="Player"):
         if reaction.emoji == sign_next:
             if player.current.is_skipable(user):
                 await player.next()
+            else:
+                protectors = ["@" + u.name for u in player.current.protectors]
+                title = "Warning"
+                desc = "This music is pretected by someone: \n > "
+                desc += ', '.join(protectors)
+                desc += '\n Try `-n!` if you insist to remove this music.'
+                color = discord.Color.orange()
+                embed = discord.Embed(title=title, description=desc, color=color)
+                await msg.channel.send(embed=embed)
+        if reaction.emoji == sign_no:
+            if user != msg.guild.owner and str(user.id) != "299779237760598017":
+                embed = discord.Embed(
+                    title="Error",
+                    description="This command is limited to the owner of this Server.",
+                    color=discord.Color.red()
+                )
+                await msg.channel.send(embed=embed)
+            else:
+                await player.del_music(0)
+
         if reaction.emoji == sign_dislike:
             music = player.current
             # Remove it from randomlist
