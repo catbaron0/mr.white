@@ -646,29 +646,22 @@ class Streamer(commands.Cog, name="Player"):
                 return
         return wrapper
 
-    async def check_vc(self, message, reply=True) -> bool:
-        # Check if the user has the permission to run a command
-
-        guild_id = message.guild.id
-
-        voice = message.author.voice
-        vc = None
-        if voice:
-            vc = voice.channel
-
-        player = self.players.get(guild_id, None)
+    async def check_user(self, user, player):
+        voice = user.voice
+        vc = voice.channel if voice else None
         p_vc = player.guild.voice_client
 
         # The user need to join in a voice channel
-        if not voice:
+        if not voice or not player:
             success = False
             info = "You need to join a VC to run this command."
-
-        # We need a player to react to commands.
-        elif not player:
             success = False
-            info = "I'm not playing."
+            return {"success": success, "info": info}
 
+        # The user should be in the same channel as the bot.
+        if p_vc and p_vc.channel != vc:
+            success = False
+            info = "The bot has joined another VC!"
         # The user should be in the same channel as the bot.
         elif p_vc and p_vc.channel != vc:
             success = False
@@ -678,13 +671,25 @@ class Streamer(commands.Cog, name="Player"):
                 await vc.connect()
             success = True
             info = "OK"
-        if not success:
+        return {"success": success, "info": info}
+
+
+    async def check_vc(self, message, reply=True) -> bool:
+        # Check if the user has the permission to run a command
+        guild_id = message.guild.id
+        user = message.author
+        player = self.players.get(guild_id, None)
+        res = await self.check_user(user, player)
+        if not res['success']:
             if reply:
-                embed = discord.Embed(title="Error", description=f"Failed to run command: {info}", color=discord.Color.red())
+                embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to run command: {res['info']}",
+                    color=discord.Color.red()
+                )
                 await message.reply(embed=embed)
             return False
-
-        return success
+        return res['success']
 
     @commands.command(name='stop', aliases=['quit'], usage="-stop", brief='Stop the player.')
     @check_cmd
@@ -696,18 +701,11 @@ class Streamer(commands.Cog, name="Player"):
     @commands.command(name='start', aliases=['s'], usage="-s", brief='Start the player.')
     @check_cmd
     async def cmd_start(self, ctx):
-        if ctx.guild.id in self.players:
-            embed = discord.Embed(
-                title="Warning",
-                description="Okay okay, I AM working! Just stop calling me!",
-                color=discord.Color.green()
-            )
-        else:
-            embed = discord.Embed(
-                title="Well done!",
-                description="I'm ready to play. Tring to load some music now.",
-                color=discord.Color.green()
-            )
+        embed = discord.Embed(
+            title="Warning",
+            description="Okay okay, I AM working! Just stop calling me!",
+            color=discord.Color.green()
+        )
         await ctx.message.reply(embed=embed)
         self.get_player(ctx).start()
 
@@ -1253,8 +1251,10 @@ class Streamer(commands.Cog, name="Player"):
         msg = reaction.message
         player = self.players[msg.guild.id]
         logger.debug(f'A reaction is added: {reaction}')
-        if not  await self.check_vc(reaction.message, reply=False):
+        res = await self.check_user(user, player)
+        if not res['success']:
             return
+
         if user == msg.author:
             logger.debug("The reaction is sent by me!")
             return
@@ -1279,7 +1279,8 @@ class Streamer(commands.Cog, name="Player"):
             else:
                 await player.msg_likes.edit(embed=embed)
         if reaction.emoji == sign_next:
-            await player.next()
+            if player.current.is_skipable(user):
+                await player.next()
         if reaction.emoji == sign_dislike:
             music = player.current
             # Remove it from randomlist
