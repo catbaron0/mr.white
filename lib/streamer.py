@@ -340,8 +340,9 @@ class MusicList:
 
 class MusicPlayer:
     __slots__ = (
-        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_randomlist', 'randomlist', 'marathon',
-        'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc', 'undead'
+        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_randomlist',
+        'randomlist', 'marathon', 'current', 'msg_np', 'volume', 'msg_likes',
+        'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc', 'undead'
     )
 
     def __init__(self, ctx, config_path: Path, start=True):
@@ -358,6 +359,7 @@ class MusicPlayer:
         # The last message showing the playing music / playlist
         self.msg_np = None
         self.msg_pl = None
+        self.msg_likes = None
         self.volume = .5
         # Current  music being played
         self.current = None
@@ -505,6 +507,7 @@ class MusicPlayer:
             self.msg_np = await self.channel.send(embed=embed)
             for sign in signs_np:
                 await self.msg_np.add_reaction(sign)
+            self.msg_likes = None
             self.current = music
 
 
@@ -985,6 +988,7 @@ class Streamer(commands.Cog, name="Player"):
         player.msg_np = await ctx.channel.send(embed=embed)
         for sign in signs_np:
             await player.msg_np.add_reaction(sign)
+        player.msg_likes = None
 
 
     @commands.command(
@@ -1270,7 +1274,10 @@ class Streamer(commands.Cog, name="Player"):
                 desc += "  Those people all love this music: \n\n > "
                 desc += ", ".join(users)
             embed = discord.Embed(title=title, description=desc, color=discord.Color.purple())
-            await reaction.message.channel.send(embed=embed)
+            if not player.msg_likes:
+                player.msg_likes = await msg.channel.send(embed=embed)
+            else:
+                await player.msg_likes.edit(embed=embed)
         if reaction.emoji == sign_next:
             await player.next()
         if reaction.emoji == sign_dislike:
