@@ -20,8 +20,7 @@ from dataclasses import dataclass
 import pafy
 from pathlib import Path
 import random
-from collections import deque
-import time
+# from collections import deque
 
 
 # Set up logger
@@ -153,6 +152,8 @@ class Music:
             return True
         if self.likes and len(self.likes) == 1 and self.likes[0] == user:
             return True
+        if not self.likes or len(self.likes) == 0:
+            return True
         return False
 
     @property
@@ -202,7 +203,7 @@ class Music:
             head = f"{sign_single_loop}(x{self.loop}) " + head
         if playing:
             head = sign_play + " " + head
-        desc =  f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}] \n"
+        desc =  f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}]"
         # bar = self.progress_bar
         # if bar and playing:
         #     desc += "\n---------------------------------------- \n"
@@ -254,31 +255,42 @@ class Music:
 # TODO: to manage the playlist with DB
 class MusicList:
     def __init__(self, maxlen: int = None, fn: Path = None):
-        self.dq = deque(maxlen=maxlen)
+        if not maxlen:
+            maxlen = float('inf')
+        self.maxlen = maxlen
+        # self.dq = deque(maxlen=maxlen)
+        self.dq = list()
         self.fn = fn
         if fn:
             self.load()
 
     def put(self, music, left=False):
-        if left:
-            self.dq.appendleft(music)
+        if left and len(self) > 0:
+            self.dq.insert(1, music)
+            if len(self.dq) >= self.maxlen:
+                self.dq.pop()
         else:
             self.dq.append(music)
+            if len(self.dq) >= self.maxlen:
+                self.dq.pop(0)
         self.save()
 
     def get(self):
-        return self.dq.popleft()
+        return self.dq.pop(0)
 
     def remove(self, music):
         logger.debug(f"Before removal! {len(self)}")
-        self.dq.remove(music)
+        for i in range(len(self.dq)):
+            if self.dq[i] == music:
+                self.dq.pop(i)
         logger.debug(f"After removal! {len(self)}")
         self.save()
 
-    def pop(self, i):
-        music = self.dq[i]
-        self.remove(music)
-        return music
+    def pop(self, i = 0):
+        # music = self.dq[i]
+        # self.remove(music)
+        # return music
+        return self.dq.pop(i)
 
     def sample(self):
         return random.sample(self.dq, 1)[0]
@@ -292,7 +304,7 @@ class MusicList:
         logger.debug(f"List saved to {self.fn}")
 
     def clear(self):
-        self.dq.clear()
+        self.dq = list()
 
     def load(self):
         fn = self.fn
@@ -322,7 +334,7 @@ class MusicList:
         return len(self.dq)
 
     def __getitem__(self, idx):
-        return list(self.dq)[idx]
+        return self.dq[idx]
 
 
 class MusicPlayer:
@@ -377,9 +389,6 @@ class MusicPlayer:
     async def next(self):
         # To play next music, just stop current voice_client,
         # and the main player_loop to take over then.
-        # self.current.loop = 0
-        # logger.debug("Append current to the playlist")
-        # self.playlist.put(self.current)
         logger.info("player.next")
         vc = self.guild.voice_client
         if not vc.is_playing():
@@ -409,12 +418,14 @@ class MusicPlayer:
                 # For single loop
                 return self.current
             if self.playlist:
-                music = self.playlist.get()
+                music = self.playlist[0]
                 logger.debug(f"Get a music from the playlist: {music} ...")
                 self.playlist.save()
                 return music
             elif self.undead and self.random_list:
                 music = self.random_list.sample()
+                self.playlist.put(music)
+                music = self.playlist[0]
                 logger.debug(f"Get a music from the random list: {music}...")
                 return music
 
@@ -505,6 +516,8 @@ class MusicPlayer:
                     await self.next_event.wait()
                     if self.current and self.current.loop > 1:
                         self.current.loop -= 1
+                    else:
+                        self.playlist.pop(0)
                     source.cleanup()
             except asyncio.TimeoutError:
                 # It cost too much time to play the music
@@ -519,7 +532,7 @@ class MusicPlayer:
                 continue
 
             if self.loop and self.current.loop == 1:
-                self.playlist.put(music)
+                self.playlist.put(self.current)
 
             if self.is_empty():
                 logger.debug("I'm leaving")
@@ -599,7 +612,9 @@ class Streamer(commands.Cog, name="Player"):
             player = self.get_player(ctx, start)
             if await self.check_vc(ctx.message):
                 player.start()
-                return await func(self, ctx, *args)
+                ret = await func(self, ctx, *args)
+                player.channel = ctx.channel
+                return ret
             else:
                 return
         return wrapper
@@ -654,10 +669,6 @@ class Streamer(commands.Cog, name="Player"):
     @commands.command(name='start', aliases=['s'], usage="-s", brief='Start the player.')
     @check_cmd
     async def cmd_start(self, ctx):
-        # if not await self.check_vc(ctx.message):
-        #     return
-        # else:
-        #     self.get_player(ctx).start()
         self.get_player(ctx).start()
 
     @commands.command(
@@ -680,33 +691,27 @@ class Streamer(commands.Cog, name="Player"):
             return
 
         player = self.get_player(ctx)
-        if pos > len(player.playlist):
+        if pos >= len(player.playlist):
             embed = discord.Embed(
                 title="Error",
-                description="Failed to run command: Invalid argument: `pos`!",
+                description = f"Failed to run command ! `pos` should be `0 <= pos <= {len(player.playlist) - 1}`",
                 color=discord.Color.red()
             )
             await ctx.message.reply(embed=embed)
 
         try:
+            music = player.playlist[pos]
+            player.random_list.remove(music)
+            player.playlist.remove(music)
             if pos == 0:
-                music = player.current
-                # Remove it from random_list
-                player.random_list.remove(music)
-
                 # Remove player.current by runing `next` command
                 # As long as the player.loop is false,
                 # current music will be dropped after being played.
                 loop = player.loop
                 player.loop = False
                 player.current.loop = 0
-                logger.debug("Next()")
                 await player.next()
                 player.loop = loop
-            else:
-                music = player.playlist[pos - 1]
-                player.random_list.remove(music)
-                player.playlist.remove(music)
             embed = discord.Embed(
                 title="Well done!",
                 description=f"The music is deleted: *{music.title}*",
@@ -866,13 +871,12 @@ class Streamer(commands.Cog, name="Player"):
             desc = [music.get_desc(playing=True)]
         else:
             desc = list()
-        if playlist:
-            len_pl = min(len(playlist), 15)
-            desc.append(f"> =========== {len_pl}/{len(playlist)} ===========")
-            for i, music in enumerate(playlist[:15]):
+        if len(playlist) > 1:
+            len_pl = min(len(playlist) - 1, 20)
+            for i, music in enumerate(playlist[1: 21]):
                 desc_i = music.get_desc(playing=False)
-                desc.append(f"> {i+1:<3d} {desc_i}")
-        title = "Playlist"
+                desc.append(f"{i+1:<3d} {desc_i}")
+        title = f"Playlist ({len_pl}/{len(playlist) - 1})"
         if player.loop:
             title = sign_list_loop + " " + title
         embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
@@ -985,10 +989,10 @@ class Streamer(commands.Cog, name="Player"):
         if not music:
             player.start()
             return
-        protectors = list()
-        protectors = ["@" + u.name for u in music.protectors]
-        logger.debug(f"Protectors: {protectors}")
-        if protectors:
+        if not music.is_skipable(ctx.author):
+            protectors = list()
+            protectors = ["@" + u.name for u in music.protectors]
+            logger.debug(f"Protectors: {protectors}")
             title = "Warning"
             desc = "This music is pretected by someone: \n > "
             desc += ', '.join(protectors) + '\n'
@@ -1012,11 +1016,9 @@ class Streamer(commands.Cog, name="Player"):
         music = player.current
         if not music:
             player.start()
+        else:
+            await player.next()
             return
-        if music.is_skipable(ctx.author):
-            player.next()
-            return
-        await player.next()
 
     @commands.command(
         name='random',
@@ -1088,47 +1090,76 @@ class Streamer(commands.Cog, name="Player"):
     @check_cmd
     async def cmd_pick(self, ctx, pos: int):
         player = self.get_player(ctx)
-        if 0 < pos <= len(player.playlist):
-            music = player.playlist.pop(pos - 1)
-            player.playlist.put(music)
+        if 0 <  pos < len(player.playlist):
+            music = player.playlist.pop(pos)
+            player.playlist.put(music, left=True)
             title = "Well done!"
             desc = f"One music is picked: *{music.title}*"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
         else:
             title = "Error"
-            desc = "Failed to run command !Invalid argument: pos!"
+            desc = f"Failed to run command ! `pos` should be `0 < pos <= {len(player.playlist) - 1}`"
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
 
     @commands.command(
-            name='remove',
-            aliases=['rm', 'remove!', 'rm!'],
-            usage="-rm 4",
-            brief="Remove a music from the playlist."
+        name='remove!',
+        aliases=['rm!'],
+        usage="-rm! 4",
+        brief="Force to remove a music from the playlist."
     )
     @check_cmd
-    async def cmd_rm(self, ctx, pos: int, force: str = ''):
+    async def cmd_rm_f(self, ctx, pos: int):
         player = self.get_player(ctx)
-        if not 0 < pos <= len(player.playlist):
+        if pos == 0:
+            return await self.cmd_next_f(ctx)
+        if not 0 < pos < len(player.playlist):
             title = "Error"
-            desc = "Failed to run command! Invalid argument: `pos`!"
+            desc = f"Failed to run command ! `pos` should be `0 <= pos <= {len(player.playlist) - 1}`"
+            color = discord.Color.red()
+            embed = discord.Embed(title=title, description=desc, color=color)
+            await ctx.message.reply(embed=embed)
+            return
+
+        music = player.playlist.pop(pos)
+        title = "Well done!"
+        desc = f"Music removied: {music.title}."
+        color = discord.Color.green()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        await ctx.message.reply(embed=embed)
+
+    @commands.command(
+        name='remove',
+        aliases=['rm'],
+        usage="-rm 4",
+        brief="Remove a music from the playlist."
+    )
+    @check_cmd
+    async def cmd_rm(self, ctx, pos: int):
+        player = self.get_player(ctx)
+        if pos == 0:
+            return await self.cmd_next(ctx)
+        if not 0 < pos < len(player.playlist):
+            title = "Error"
+            desc = f"Failed to run command ! `pos` should be `0 <= pos <= {len(player.playlist) - 1}`",
             embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
             await ctx.message.reply(embed=embed)
             return
 
-        rm = player.playlist.pop(pos - 1)
-        if ctx.command.name.endswith('!') or ctx.author == rm.requester:
-            title = "Well done!"
-            desc = f"Music removied: {rm.title}."
-            color = discord.Color.green()
+        music = player.playlist[pos]
+        if music.is_skipable(ctx.author):
+            await self.cmd_rm_f(ctx, pos)
         else:
+            protectors = list()
+            protectors = ["@" + u.name for u in music.protectors]
+            logger.debug(f"Protectors: {protectors}")
             title = "Warning"
-            desc = "This music is requested by @{rm.requester.name}.\n"
+            desc = "This music is pretected by someone: \n > "
             desc += '\n Try `-rm!` if you insist to remove this music.'
             color = discord.Color.orange()
             embed = discord.Embed(title=title, description=desc, color=color)
-        await ctx.message.reply(embed=embed)
+            await ctx.message.reply(embed=embed)
 
     @commands.command(name='clear', aliases=['cl', 'empty'], usage="-cl", brief="Remove all the musics.")
     @check_cmd
