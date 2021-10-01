@@ -740,9 +740,10 @@ class Streamer(commands.Cog, name="Player"):
             music = player.playlist[pos]
             logger.debug("Del from randomlist")
             player.randomlist.remove(music)
-            logger.debug("Del from playlist")
-            player.playlist.remove(music)
-            if pos == 0:
+            if pos > 0:
+                logger.debug("Del from playlist")
+                player.playlist.remove(music)
+            else:
                 # Remove player.current by runing `next` command
                 # As long as the player.loop is false,
                 # current music will be dropped after being played.
@@ -751,6 +752,7 @@ class Streamer(commands.Cog, name="Player"):
                 player.current.loop = 0
                 await player.next()
                 player.loop = loop
+
             embed = discord.Embed(
                 title="Well done!",
                 description=f"The music is deleted: *{music.title}*",
@@ -1267,7 +1269,7 @@ class Streamer(commands.Cog, name="Player"):
                 # besides mr.white and you
                 desc += "  Those people all love this music: \n\n > "
                 desc += ", ".join(users)
-            embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.purple())
             await reaction.message.channel.send(embed=embed)
         if reaction.emoji == sign_next:
             await player.next()
