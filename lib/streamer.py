@@ -21,6 +21,7 @@ import pafy
 from pathlib import Path
 import random
 from collections import deque
+import time
 
 
 # Set up logger
@@ -145,6 +146,7 @@ class Music:
     loop: int = 1
     volume: float = 0.3
     likes: list = None
+    progress: int = 0
 
     def is_skipable(self, user):
         if user == self.requester:
@@ -166,12 +168,31 @@ class Music:
         # The real url may be expired, so we need to update it before we play the music.
         to_run = partial(ytdl.extract_info, url=self.web_url, download=False)
         try:
-            res = await loop.run_in_executor(None, to_run)
+            for i in range(10):
+                res = await loop.run_in_executor(None, to_run)
+                if res:
+                    break
+                asyncio.sleep(1)
         except Exception as e:
             logger.error(f"Failed to update info of url: {self.web_url}\n{e}")
         self.url = res['url']
         # The duration can be None if we load the music from a file, so we update it here as well.
         self.duration = res['duration']
+
+    @property
+    def progress_bar(self) -> str:
+        if not self.duration:
+            return
+        bar_len = 12
+        bar = ['━'] * bar_len
+        # bar = ['━'] * bar_len
+        # bar = '"●━━━━━━─────── 5:20"'
+        progress = round(self.progress / self.duration * bar_len)
+        # bar[: progress] = [''] * progress
+        if progress >= bar_len:
+            progress = bar_len - 1
+        bar[progress] = '●'
+        return ''.join(bar)
 
     def get_desc(self, playing: bool) -> str:
         # Genenrate str to display as the content of  Discord message.
@@ -181,8 +202,22 @@ class Music:
             head = f"{sign_single_loop}(x{self.loop}) " + head
         if playing:
             head = sign_play + " " + head
-        return f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}]"
+        desc =  f"[{head}({self.duration_str}) {self.title}]({self.web_url}) [{user}] \n"
+        # bar = self.progress_bar
+        # if bar and playing:
+        #     desc += "\n---------------------------------------- \n"
+        #     desc += bar + f"  {self.progress_str} \n"
+        #     desc += "---------------------------------------- \n"
+        return desc
 
+    @property
+    def progress_str(self):
+        if self.duration:
+            m = self.progress // 60
+            s = self.progress % 60
+            return f"{m:02d}:{s:02d}"
+        else:
+            return "Unknown"
 
     @property
     def duration_str(self) -> Optional[int]:
@@ -335,7 +370,9 @@ class MusicPlayer:
 
     def is_empty(self):
         vc = self.guild.voice_client.channel
-        return len(vc.members) == 1
+        n_mem = len(vc.voice_states)
+        print(vc.members)
+        return n_mem == 1
 
     async def next(self):
         # To play next music, just stop current voice_client,
@@ -351,24 +388,17 @@ class MusicPlayer:
         else:
             logger.debug("stop vs")
             vc.stop()
-        if self.is_empty():
-            logger.debug("I'm leaving")
-            title = "Warning"
-            desc = "I'm leaving because there nobody here."
-            embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
-            await self.channel.send(embed=embed)
-
-            await self.stop()
-            self.destroy(self.guild)
 
     async def stop(self):
         # Stop the player.
-        self.playerlist.put(self.current, left=True)
+
+        self.playlist.put(self.current, left=True)
         self.is_exit = True
         await self.next()
         vc = self.guild.voice_client
         if vc and vc.is_connected():
             await vc.disconnect()
+        self.destroy(self.guild)
 
 
     async def get_music(self):
@@ -403,7 +433,7 @@ class MusicPlayer:
             except asyncio.TimeoutError:
                 logger.debug("I'm leaving")
                 title = "Warning"
-                desc = "I'm leaving because there nothing to do."
+                desc = "I'm leaving because there is nothing to do."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await self.channel.send(embed=embed)
                 return self.destroy(self.guild)
@@ -448,10 +478,10 @@ class MusicPlayer:
             # Play the music
             try:
                 if music.duration:
-                    time = 10 + music.duration
+                    overtime = 10 + music.duration
                 else:
-                    time = 300
-                async with timeout(time):
+                    overtime = 300
+                async with timeout(overtime):
                     if self.guild.voice_client and self.guild.voice_client.is_connected:
                         self.guild.voice_client.play(
                             source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next_event.set())
@@ -462,7 +492,15 @@ class MusicPlayer:
                         desc = "I'm not connected to a voice client."
                         embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                         self.msg_np = await self.channel.send(embed=embed)
-
+                    # while self.guild.voice_client.is_playing() or self.current.progress > self.current.duration + 2:
+                    #     time.sleep(20)
+                    #     self.current.progress += 20
+                    #     if self.msg_np:
+                    #         desc = music.get_desc(playing=True)
+                    #         embed = discord.Embed(
+                    #                 title="Now playing", description=desc, color=discord.Color.green()
+                    #         )
+                    #         await self.msg_np.edit(embed=embed)
                     # The event loop will wait here until the music is finished.
                     await self.next_event.wait()
                     if self.current and self.current.loop > 1:
@@ -482,8 +520,17 @@ class MusicPlayer:
 
             if self.loop and self.current.loop == 1:
                 self.playlist.put(music)
+
+            if self.is_empty():
+                logger.debug("I'm leaving")
+                title = "Warning"
+                desc = "I'm leaving because there nobody here."
+                embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
+                await self.channel.send(embed=embed)
+                break
             if self.is_exit:
                 break
+        await self.stop()
 
     def destroy(self, guild):
         return self.bot.loop.create_task(self.cog.cleanup(guild))
@@ -620,7 +667,9 @@ class Streamer(commands.Cog, name="Player"):
     )
     @check_cmd
     async def cmd_del(self, ctx, pos: int = 0):
-        logger.info(f"cmd_del command from: {ctx.author.id}")
+        logger.debug(f"cmd_del command from: {ctx.author.id}")
+        logger.debug(f"cmd_del command from: {ctx.author}")
+        logger.debug(f"guild.owner: {ctx.guild.owner}")
         if ctx.author != ctx.guild.owner and str(ctx.author.id) != "299779237760598017":
             embed = discord.Embed(
                 title="Error",
@@ -717,7 +766,7 @@ class Streamer(commands.Cog, name="Player"):
                 await reply.edit(embed=embed)
                 return
         else:
-            logger.debug("Got an keyword query!")
+            logger.debug(f"Got an keyword query: {query}")
 
             title = "Processing"
             desc = f"I'm searching music for the key words `{query}`"
@@ -819,15 +868,15 @@ class Streamer(commands.Cog, name="Player"):
             desc = list()
         if playlist:
             len_pl = min(len(playlist), 15)
-            desc.append(f"=========== {len_pl}/{len(playlist)} ===========")
+            desc.append(f"> =========== {len_pl}/{len(playlist)} ===========")
             for i, music in enumerate(playlist[:15]):
                 desc_i = music.get_desc(playing=False)
-                desc.append(f"{i+1:<3d} {desc_i}")
+                desc.append(f"> {i+1:<3d} {desc_i}")
         title = "Playlist"
         if player.loop:
             title = sign_list_loop + " " + title
         embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
-        player.msg_np = await ctx.channel.send(embed=embed)
+        player.msg_pl = await ctx.channel.send(embed=embed)
         #TODO: add reactions
 
     @commands.command(
@@ -896,35 +945,35 @@ class Streamer(commands.Cog, name="Player"):
             embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
             await ctx.message.reply(embed=embed)
 
-    # @commands.command(
-    #     name='loop',
-    #     aliases=['lp'],
-    #     usage="-loop on/off",
-    #     brief="Set the switch of loop on the playlist."
-    # )
-    # @check_cmd
-    # async def cmd_toggle_loop_list(self, ctx, switch):
-    #     player = self.get_player(ctx)
-    #     if switch == 'on':
-    #         player.loop = True
-    #         title = "Well done!"
-    #         desc = "Start to loop on the playlist."
-    #         color = discord.Color.green()
-    #     elif switch == 'off':
-    #         player.current.loop = False
-    #         title = "Well done!"
-    #         desc = "Stop loopping on the playlist."
-    #         color = discord.Color.green()
-    #     else:
-    #         title = "Error"
-    #         desc = "The switch arguments need to be on/off."
-    #         color = discord.Color.red()
-    #     embed = discord.Embed(title=title, description=desc, color=color)
-    #     await ctx.message.reply(embed=embed)
+    @commands.command(
+        name='loop',
+        aliases=['lp'],
+        usage="-loop on/off",
+        brief="Set the switch of loop on the playlist."
+    )
+    @check_cmd
+    async def cmd_toggle_loop_list(self, ctx, switch):
+        player = self.get_player(ctx)
+        if switch == 'on':
+            player.loop = True
+            title = "Well done!"
+            desc = "Start to loop on the playlist."
+            color = discord.Color.green()
+        elif switch == 'off':
+            player.current.loop = False
+            title = "Well done!"
+            desc = "Stop loopping on the playlist."
+            color = discord.Color.green()
+        else:
+            title = "Error"
+            desc = "The switch arguments need to be on/off."
+            color = discord.Color.red()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        await ctx.message.reply(embed=embed)
 
     @commands.command(
         name='next',
-        aliases=['next!', 'n', 'n!', 'skip', 'skip!'],
+        aliases=['n', 'skip'],
         usage="-n",
         brief="Play next music."
     )
@@ -933,17 +982,10 @@ class Streamer(commands.Cog, name="Player"):
         logger.debug(f"cmd: {ctx.command.name}")
         player = self.get_player(ctx)
         music = player.current
-        protectors = list()
-        logger.debug("user: " + str(ctx.author))
         if not music:
             player.start()
             return
-        if ctx.command.name.endswith('!'):
-            player.next()
-            return
-        if music.is_skipable(ctx.author):
-            player.next()
-            return
+        protectors = list()
         protectors = ["@" + u.name for u in music.protectors]
         logger.debug(f"Protectors: {protectors}")
         if protectors:
@@ -954,6 +996,25 @@ class Streamer(commands.Cog, name="Player"):
             color = discord.Color.orange()
             embed = discord.Embed(title=title, description=desc, color=color)
             await ctx.message.reply(embed=embed)
+            return
+        await self.cmd_next_f(ctx)
+
+    @commands.command(
+        name='next!',
+        aliases=['n!', 'skip!'],
+        usage="-n!",
+        brief="Force to play next music."
+    )
+    @check_cmd
+    async def cmd_next_f(self, ctx):
+        logger.debug(f"cmd: {ctx.command.name}")
+        player = self.get_player(ctx)
+        music = player.current
+        if not music:
+            player.start()
+            return
+        if music.is_skipable(ctx.author):
+            player.next()
             return
         await player.next()
 
@@ -1099,7 +1160,8 @@ class Streamer(commands.Cog, name="Player"):
             title = "YEAH!"
             if player.current.likes is None:
                 player.current.likes = list()
-            player.current.likes.append(user)
+            if user not in player.current.likes:
+                player.current.likes.append(user)
             users = ["@" + u.name for u in player.current.likes if u != msg.author]
             desc = f"{user.mention} loves this music!"
             if len(users) > 1:
