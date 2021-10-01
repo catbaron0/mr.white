@@ -13,13 +13,15 @@ Player:
   current       Show the current music.
   del           Delete a song (remove from playlist and delete from random list)
   keep          Keep this player alive. Limited to catbaron.
-  marathon      The player will not stop until it plays enough music.
+  loop          Set the switch of loop on the playlist.
   next          Play next music.
+  next!         Force to play next music.
   pick          Pick a music to the top of playlist.
   playlist      Show the playlist.
   random        Randomly pick a musci from randomlist.
   reload        Reload random playlist.
   remove        Remove a music from the playlist.
+  remove!       Force to remove a music from the playlist.
   repeat        repeat the current music for up to 10 times.
   restart       Restart the player. Plaeas use it when the player is freezing.
   start         Start the player.
@@ -46,6 +48,6 @@ You can also type -help category for more info on a category.
 * [Transfer](https://github.com/Mikubill/transfer)
 
 # TODO:
-- [ ] pause/play
+- [x] pause/play
 - [ ] Pages of playlist
-- [ ] Update the player UI
+- [x] Update the player UI

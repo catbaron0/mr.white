@@ -70,12 +70,12 @@ sign_single_loop = "🔂"
 sign_list_loop= "🔄"
 sign_next = "⏭"
 sign_play = "▶️"
+sign_pause = "⏸️"
 sign_like = '❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💟 ❣️ 💕 💞 💗 💘 💝 🥰'
 sign_dislike = '💔'
 sign_no = '❌'
 
-# signs_np = (sign_like[0], sign_dislike, sign_next, sign_single_loop)
-signs_np = (sign_like[0], sign_next, sign_single_loop)
+signs_np = (sign_like[0], sign_play, sign_pause,  sign_next, sign_single_loop)
 
 def info_keywords(key_words: str) -> Dict[str, str]:
     '''
@@ -375,6 +375,27 @@ class MusicPlayer:
             logger.debug("I'm starting")
             self.start()
 
+    def pause(self):
+        vc = self.guild.voice_client
+        if not vc or not vc.is_connected() or not vc.is_playing():
+            return False
+        if vc.is_paused():
+            return False
+        vc.pause()
+        return True
+
+    def resume(self):
+        vc = self.guild.voice_client
+        if not vc or not vc.is_connected():
+            logger.debug("vc is not connect")
+            return False
+        if not vc.is_paused():
+            logger.debug("vc is not paused")
+            return False
+        vc.resume()
+        return True
+
+
     def start(self):
         # Run the main loop.
         if self.is_exit is None:
@@ -533,6 +554,8 @@ class MusicPlayer:
                 continue
 
             if self.loop and self.current.loop == 1:
+                self.current.requester = None
+                self.current.likes = list()
                 self.playlist.put(self.current)
 
             if self.is_empty():
@@ -670,6 +693,19 @@ class Streamer(commands.Cog, name="Player"):
     @commands.command(name='start', aliases=['s'], usage="-s", brief='Start the player.')
     @check_cmd
     async def cmd_start(self, ctx):
+        if ctx.guild.id in self.players:
+            embed = discord.Embed(
+                title="Warning",
+                description="Okay okay, I AM working! Just stop calling me!",
+                color=discord.Color.green()
+            )
+        else:
+            embed = discord.Embed(
+                title="Well done!",
+                description="I'm ready to play. Tring to load some music now.",
+                color=discord.Color.green()
+            )
+        await ctx.message.reply(embed=embed)
         self.get_player(ctx).start()
 
     @commands.command(
@@ -849,6 +885,36 @@ class Streamer(commands.Cog, name="Player"):
     #     await ctx.message.reply(embed=embed)
 
 
+    @commands.command(name='pause', usage="-pause", brief="Pause.")
+    @check_cmd
+    async def cmd_pause(self, ctx):
+        player = self.get_player(ctx)
+        if player.pause():
+            title = "Well done!"
+            desc = f"I'm paused!"
+            color = discord.Color.green()
+        else:
+            title = "Error"
+            desc = f"You can't pause me for now!"
+            color = discord.Color.red()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        await ctx.message.reply(embed=embed)
+
+    @commands.command(name='resume', usage="-resume", brief="Resume.")
+    @check_cmd
+    async def cmd_resume(self, ctx):
+        player = self.get_player(ctx)
+        if player.resume():
+            title = "Well done!"
+            desc = f"I'm resumed!"
+            color = discord.Color.green()
+        else:
+            title = "Error"
+            desc = f"You can't resume me for now!"
+            color = discord.Color.red()
+        embed = discord.Embed(title=title, description=desc, color=color)
+        await ctx.message.reply(embed=embed)
+
     @commands.command(name='reload', aliases=['rl'], usage="-rl", brief="Reload random playlist.")
     @check_cmd
     async def cmd_reload(self, ctx):
@@ -871,9 +937,8 @@ class Streamer(commands.Cog, name="Player"):
             playlist = player.randomlist
         music = player.current
         if music:
-            desc = [music.get_desc(playing=True)]
-        else:
-            desc = list()
+            await self.cmd_np(ctx)
+        desc = list()
         if len(playlist) > 1:
             len_pl = min(len(playlist) - 1, 20)
             for i, music in enumerate(playlist[1: 21]):
@@ -1218,6 +1283,10 @@ class Streamer(commands.Cog, name="Player"):
             player.loop = loop
         if reaction.emoji == sign_single_loop:
             player.current.loop = 10
+        if reaction.emoji == sign_play:
+            player.resume()
+        if reaction.emoji == sign_pause:
+            player.pause()
 
     @commands.Cog.listener()
     async def on_reaction_remove(self, reaction, user):
