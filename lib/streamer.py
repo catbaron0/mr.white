@@ -283,6 +283,7 @@ class MusicList:
         for i in range(len(self.dq)):
             if self.dq[i] == music:
                 self.dq.pop(i)
+                break
         logger.debug(f"After removal! {len(self)}")
         self.save()
 
@@ -339,7 +340,7 @@ class MusicList:
 
 class MusicPlayer:
     __slots__ = (
-        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_random_list', 'random_list', 'marathon',
+        'bot', 'guild', 'channel', 'cog', 'playlist', 'next_event', 'f_randomlist', 'randomlist', 'marathon',
         'current', 'msg_np', 'volume', 'msg_pl', 'loop', 'config_path', 'vc', 'is_exit', 'vc', 'undead'
     )
 
@@ -363,11 +364,11 @@ class MusicPlayer:
         # Loop the playlist
         self.loop = False
 
-        f_random_list = self.config_path / f"random.{ctx.guild.id}"
-        self.random_list = MusicList(maxlen=500, fn=f_random_list)
+        f_randomlist = self.config_path / f"random.{ctx.guild.id}"
+        self.randomlist = MusicList(maxlen=500, fn=f_randomlist)
         f_play_list = self.config_path / f"play.{ctx.guild.id}"
         self.playlist = MusicList(fn=f_play_list)
-        logger.debug(f"Len(random_list): {len(self.random_list)}")
+        logger.debug(f"Len(randomlist): {len(self.randomlist)}")
         self.is_exit = None
 
         if start:
@@ -422,8 +423,8 @@ class MusicPlayer:
                 logger.debug(f"Get a music from the playlist: {music} ...")
                 self.playlist.save()
                 return music
-            elif self.undead and self.random_list:
-                music = self.random_list.sample()
+            elif self.undead and self.randomlist:
+                music = self.randomlist.sample()
                 self.playlist.put(music)
                 music = self.playlist[0]
                 logger.debug(f"Get a music from the random list: {music}...")
@@ -701,7 +702,9 @@ class Streamer(commands.Cog, name="Player"):
 
         try:
             music = player.playlist[pos]
-            player.random_list.remove(music)
+            logger.debug("Del from randomlist")
+            player.randomlist.remove(music)
+            logger.debug("Del from playlist")
             player.playlist.remove(music)
             if pos == 0:
                 # Remove player.current by runing `next` command
@@ -797,12 +800,12 @@ class Streamer(commands.Cog, name="Player"):
                     requester=requester, title=item['title'],
                     web_url=item['web_url'], duration=item['duration']
             )
-            if music in player.random_list:
+            if music in player.randomlist:
                 logger.debug(f"It's in the list {music}")
             else:
                 _music = Music(requester=None, title=item['title'], web_url=item['web_url'])
-                if _music not in player.random_list:
-                    player.random_list.put(_music)
+                if _music not in player.randomlist:
+                    player.randomlist.put(_music)
             if music in player.playlist:
                 title = "Warning"
                 desc =  f"This music is already in the playlist: *{music.title}*."
@@ -850,9 +853,9 @@ class Streamer(commands.Cog, name="Player"):
     @check_cmd
     async def cmd_reload(self, ctx):
         player = self.get_player(ctx)
-        player.random_list.load()
+        player.randomlist.load()
         title = "Well done!"
-        desc = f"{len(player.random_list)} music loaed to random playlist."
+        desc = f"{len(player.randomlist)} music loaed to random playlist."
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
         await ctx.message.reply(embed=embed)
 
@@ -865,7 +868,7 @@ class Streamer(commands.Cog, name="Player"):
         if not pl or pl == 'playlist':
             playlist = player.playlist
         elif pl == 'random':
-            playlist = player.random_list
+            playlist = player.randomlist
         music = player.current
         if music:
             desc = [music.get_desc(playing=True)]
@@ -1029,8 +1032,8 @@ class Streamer(commands.Cog, name="Player"):
     async def cmd_random(self, ctx):
         player = self.get_player(ctx)
         player.playlist
-        if player.random_list:
-            music = player.random_list.sample()
+        if player.randomlist:
+            music = player.randomlist.sample()
             player.playlist.put(music)
             logger.debug(f"Get a music from the random list: {music}...")
             title = "Well done!"
@@ -1052,15 +1055,15 @@ class Streamer(commands.Cog, name="Player"):
     @check_requester
     async def cmd_ur(self, ctx):
         player = self.get_player(ctx)
-        random_list = player.random_list
+        randomlist = player.randomlist
         updated = 0
-        for music in random_list:
+        for music in randomlist:
             if not music.duration:
                 updated += 1
                 logger.info(f"Updating {music}")
                 await asyncio.sleep(2)
                 await music.update_info(ctx.bot.loop)
-                random_list.save()
+                randomlist.save()
         title = "Well done!"
         desc = f"{updated} music is upated."
         embed = discord.Embed(title=title, description=desc, color=discord.Color.green())
@@ -1205,8 +1208,8 @@ class Streamer(commands.Cog, name="Player"):
             await player.next()
         if reaction.emoji == sign_dislike:
             music = player.current
-            # Remove it from random_list
-            player.random_list.remove(music)
+            # Remove it from randomlist
+            player.randomlist.remove(music)
             # Remove player.current
             loop = player.loop
             player.loop = False
