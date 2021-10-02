@@ -756,7 +756,7 @@ class Streamer(commands.Cog, name="Player"):
             await ctx.message.reply(embed=embed)
 
         try:
-            music = player.del_music(pos)
+            music = await player.del_music(pos)
             embed = discord.Embed(
                 title="Well done!",
                 description=f"The music is deleted: *{music.title}*",
@@ -942,15 +942,16 @@ class Streamer(commands.Cog, name="Player"):
         elif pl == 'random':
             playlist = player.randomlist
         music = player.current
-        if music:
-            await self.cmd_np(ctx)
         desc = list()
+        if music:
+            # await self.cmd_np(ctx)
+            desc.append(music.get_desc(playing=True))
         if len(playlist) > 1:
-            len_pl = min(len(playlist) - 1, 20)
+            len_pl = min(len(playlist), 20)
             for i, music in enumerate(playlist[1: 21]):
                 desc_i = music.get_desc(playing=False)
                 desc.append(f"{i+1:<3d} {desc_i}")
-        title = f"Playlist ({len_pl}/{len(playlist) - 1})"
+        title = f"Playlist ({len_pl}/{len(playlist)})"
         if player.loop:
             title = sign_list_loop + " " + title
         embed = discord.Embed(title=title, description='\n'.join(desc), color=discord.Color.green())
@@ -971,7 +972,7 @@ class Streamer(commands.Cog, name="Player"):
 
     @commands.command(
         name='current',
-        aliases=['np', 'cur', 'playing'],
+        aliases=['np', 'cur', 'playing', 'now'],
         usage="-np",
         brief="Show the current music."
     )
