@@ -172,13 +172,15 @@ class Music:
             for i in range(10):
                 res = await loop.run_in_executor(None, to_run)
                 if res:
-                    break
+                    self.url = res['url']
+                    # The duration can be None if we load the music from a file,
+                    # so we update it here as well.
+                    self.duration = res['duration']
+                    logger.debug(f"Got res for {self}")
+                    return
                 asyncio.sleep(1)
         except Exception as e:
             logger.error(f"Failed to update info of url: {self.web_url}\n{e}")
-        self.url = res['url']
-        # The duration can be None if we load the music from a file, so we update it here as well.
-        self.duration = res['duration']
 
     @property
     def progress_bar(self) -> str:
@@ -582,7 +584,7 @@ class MusicPlayer:
             if self.is_empty():
                 logger.debug("I'm leaving")
                 title = "Warning"
-                desc = "I'm leaving because there nobody here."
+                desc = "I'm leaving because there is nobody here."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await self.channel.send(embed=embed)
                 break
