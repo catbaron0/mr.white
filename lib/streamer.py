@@ -491,6 +491,7 @@ class MusicPlayer:
                 desc = "I'm leaving because there is nothing to do."
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
                 await self.channel.send(embed=embed)
+                self.playlist.pop(0)
                 return self.destroy(self.guild)
 
             # Fetch the real url
@@ -504,6 +505,7 @@ class MusicPlayer:
                 embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                 await self.channel.send(embed=embed)
                 # Read next music if failed to extact information for this music
+                self.playlist.pop(0)
                 continue
             logger.debug("Updated url...")
 
@@ -515,6 +517,7 @@ class MusicPlayer:
                 )
             except Exception as e:
                 logger.debug(f"Failed to generate FFmpegOpusAUdio:{e}")
+                self.playlist.pop(0)
                 continue
 
             # Display the musci to play
@@ -538,6 +541,8 @@ class MusicPlayer:
                 else:
                     overtime = 300
                 async with timeout(overtime):
+                    if self.guild.voice_client.is_playing():
+                        self.guild.voice_client.stop()
                     if self.guild.voice_client and self.guild.voice_client.is_connected:
                         self.guild.voice_client.play(
                             source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next_event.set())
@@ -574,6 +579,7 @@ class MusicPlayer:
                         color=discord.Color.red()
                 )
                 await self.channel.send(embed=embed)
+                self.playlist.pop(0)
                 continue
 
             if self.loop and self.current.loop == 1:
@@ -948,7 +954,7 @@ class Streamer(commands.Cog, name="Player"):
         if music:
             # await self.cmd_np(ctx)
             desc.append(music.get_desc(playing=True))
-        if len(playlist) > 1:
+        if len(playlist) >= 1:
             len_pl = min(len(playlist), 20)
             for i, music in enumerate(playlist[1: 21]):
                 desc_i = music.get_desc(playing=False)
