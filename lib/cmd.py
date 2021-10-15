@@ -1,3 +1,5 @@
+from urllib import parse
+import html
 from pypinyin import pinyin
 import wikipedia as wiki
 from discord import Embed
@@ -41,6 +43,9 @@ class PinyinCMD:
         return word_py
 
     async def __call__(self, ctx, words: str):
+        msg = ctx.message
+        if not words.strip() and msg.reference:
+            words = msg.reference.cached_message.content
         reply = self.words2pinyin(words)
         await ctx.message.reply(reply)
 
@@ -74,8 +79,16 @@ class WikiCMD:
         return {'msg_text': msg_text, 'emb': emb}
 
     async def __call__(self, ctx, query: str):
+        msg = ctx.message
+        if not query.strip() and msg.reference:
+            query = msg.reference.cached_message.content
         msg = await ctx.message.reply('Loading ...')
-        reply = self.generate_reply(query)
+        try:
+            reply = self.generate_reply(query)
+        except Exception:
+            msg_text = f'No wikipedia page for "{query}"'
+            reply = {"msg_text": msg_text, 'emb': None}
+
         reply_text = reply['msg_text']
         reply_text = f'[{query}]:\n' + reply_text
         reply_emb = reply['emb']
@@ -97,6 +110,9 @@ class MemeCMD:
         self.description = self.brief
 
     async def __call__(self, ctx, meme: str):
+        msg = ctx.message
+        if not meme.strip() and msg.reference:
+            meme = msg.reference.cached_message.content
         msg = await ctx.message.reply('Loading ...')
         data = {"phrase": meme, "page":1}
         data = json.dumps(data)
@@ -137,14 +153,40 @@ class MemeCMD:
 class TranslateCMD:
     def __init__(self):
         self.active_chats = list()
-        self.url = 'http://fanyi.youdao.com/translate?smartresult=dict&smartresult=rule&smartresult=ugc&sessionFrom=null'
+        # self.url = 'http://fanyi.youdao.com/translate?smartresult=dict&smartresult=rule&smartresult=ugc&sessionFrom=null'
+        self.url = 'http://translate.google.cn/m?q=%s&tl=%s&sl=%s'
 
         self.name = 'tr'
         self.usage = 'SENTENCE'
         self.brief = 'Translate between Chinese and English.'
         self.description = self.brief
 
+    @staticmethod
+    def translate(text, to_language="zh-CN", text_language="auto"):
+        GOOGLE_TRANSLATE_URL = 'http://translate.google.cn/m?q=%s&tl=%s&sl=%s'
+        text = parse.quote(text)
+        url = GOOGLE_TRANSLATE_URL % (text,to_language,text_language)
+        response = requests.get(url)
+        data = response.text
+        expr = r'(?s)class="(?:t0|result-container)">(.*?)<'
+        result = re.findall(expr, data)
+        if (len(result) > 0):
+            return html.unescape(result[0])
+
     async def __call__(self, ctx, text: str):
+        msg = ctx.message
+        if not text.strip() and msg.reference:
+            text = msg.reference.cached_message.content
+        msg = await ctx.message.reply("Loading ...")
+        reply = self.translate(text).strip()
+        if not reply:
+            reply = "Error: 查不到"
+        elif reply == text:
+            reply = self.translate(text, to_language="en")
+        await msg.edit(content=reply)
+
+    async def ___call__(self, ctx, text: str):
+        print(f"Get a query to translate {text}")
         msg = await ctx.message.reply("Loading ...")
         query = {
             'type': 'AUTO',
