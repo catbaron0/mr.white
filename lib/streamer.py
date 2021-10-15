@@ -303,7 +303,8 @@ class MusicList:
             return
         with open(self.fn, 'w') as f:
             for music in self.dq:
-                f.write(f"{music.title}\t{music.web_url}\t{music.duration}\n")
+                if music:
+                    f.write(f"{music.title}\t{music.web_url}\t{music.duration}\n")
         logger.debug(f"List saved to {self.fn}")
 
     def clear(self):
@@ -541,7 +542,7 @@ class MusicPlayer:
                 else:
                     overtime = 300
                 async with timeout(overtime):
-                    if self.guild.voice_client.is_playing():
+                    if self.guild.voice_client and self.guild.voice_client.is_playing():
                         self.guild.voice_client.stop()
                     if self.guild.voice_client and self.guild.voice_client.is_connected:
                         self.guild.voice_client.play(
@@ -553,15 +554,6 @@ class MusicPlayer:
                         desc = "I'm not connected to a voice client."
                         embed = discord.Embed(title=title, description=desc, color=discord.Color.red())
                         self.msg_np = await self.channel.send(embed=embed)
-                    # while self.guild.voice_client.is_playing() or self.current.progress > self.current.duration + 2:
-                    #     time.sleep(20)
-                    #     self.current.progress += 20
-                    #     if self.msg_np:
-                    #         desc = music.get_desc(playing=True)
-                    #         embed = discord.Embed(
-                    #                 title="Now playing", description=desc, color=discord.Color.green()
-                    #         )
-                    #         await self.msg_np.edit(embed=embed)
                     # The event loop will wait here until the music is finished.
                     await self.next_event.wait()
                     if self.current and self.current.loop > 1:
