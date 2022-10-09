@@ -10,6 +10,7 @@ import requests
 import subprocess
 from lib.search_music import YoutubeMusic
 from pathlib import Path
+from bs4 import BeautifulSoup as bs
 
 
 logger = logging.getLogger(__name__)
@@ -245,7 +246,7 @@ class Mp3CMD:
 
 
         await reply_msg.edit(content='在传了，等我两分钟...')
-        cmd_info = ['transfer', 'cow', str(title)]
+        cmd_info = ['transfer', 'wet', str(title)]
         process = subprocess.Popen(
             cmd_info,
             stdout=subprocess.PIPE,
@@ -257,8 +258,148 @@ class Mp3CMD:
         output_text = stdout.decode('utf-8').strip().split('\n')
         print(f"output_text: {output_text}\n")
         # stdout = output_text[1].split(": ")[1]
-        stdout = output_text[1]
+        stdout = output_text[2]
         print(f"reply: {stdout}\n")
         stdout.replace('Download Link', '\n下载链接')
         await reply_msg.edit(content=stdout)
 
+
+class BookCMD:
+    def __init__(self, lang="zh"):
+        self.name = 'book'
+        self.usage = 'Title [authors]'
+        self.brief = 'Search for books.'
+        self.description = self.brief
+
+        self.base_url = 'https://www.goodreads.com'
+        self.url_search = self.base_url + '/search?q='
+
+    def generate_reply(self, query):
+        # search
+        url_search = self.url_search + query
+        emb = None
+        try:
+            print('Query ID...')
+            res_search = requests.get(url_search)
+            soup = bs(res_search.text)
+        except Exception as e:
+            print(f"Failed to search: {e}")
+            msg_text = "完了，找不到。问问猫怎么回事。"
+            return {'msg_text': msg_text, 'emb': emb}
+        try:
+            book_url = soup.tr.a["href"].split("?")[0]
+        except Exception as e:
+            print(f"Failed to search: {e}")
+            msg_text = "瞎搜啥玩儿，我没这书。"
+            return {'msg_text': msg_text, 'emb': emb}
+
+        # get details
+        info_url = self.base_url + book_url + "?from_search=true"
+        try:
+            res_search = requests.get(info_url)
+            soup = bs(res_search.text)
+        except Exception as e:
+            print(f"Failed to search: {e}")
+            msg_text = "完了，找不到。问问猫怎么回事。"
+            return {'msg_text': msg_text, 'emb': emb}
+        print(soup)
+        title = soup.select("#bookTitle")[0].text.strip()
+        authors = ",".join([n.text for n in soup.find_all("span", itemprop="name")])
+        desc = soup.select("#description")[0].text.strip()
+        summary =  f"《{title}》\n作者: {authors})\n{desc}\n"
+        emb = Embed(title=title, url=info_url, description=summary)
+        return {'msg_text': summary, 'emb': emb}
+
+    async def __call__(self, ctx, query: str):
+        msg = ctx.message
+        if not query.strip() and msg.reference:
+            query = msg.reference.cached_message.content
+        msg = await ctx.message.reply('Loading ...')
+        try:
+            reply = self.generate_reply(query)
+        except Exception as e:
+            msg_text = f'No Book for "{query}"'
+            reply = {"msg_text": msg_text, 'emb': None}
+            raise e
+
+        reply_text = reply['msg_text']
+        reply_text = f'[{query}]:\n' + reply_text
+        reply_emb = reply['emb']
+        if reply_emb:
+            await msg.edit(content="", embed=reply_emb)
+        else:
+            await msg.edit(content=reply_text)
+
+
+class MovieCMD:
+    def __init__(self, token: str):
+        self.token = token
+        self.url_search = f'https://api.themoviedb.org/3/search/multi?api_key={token}&language=zh-ch&page=1&include_adult=false&query='
+
+        self.name = 'movie'
+        self.usage = 'Title'
+        self.brief = 'Search for movies.'
+        self.description = self.brief
+
+    def generate_reply(self, query):
+        # search
+        url = self.url_search + query
+        emb = None
+        try:
+            res = requests.get(url).json()["results"]
+        except Exception as e:
+            print(f"Failed to seach movie: {query}", e)
+            msg_text = "出事了，快让猫过来看看怎么回事。"
+            return {'msg_text': msg_text, 'emb': emb}
+        if not res or res[0]['media_type'] not in ("movie", "tv"):
+            msg_text =  "这名字你瞎编的吧，放映员说他没看过。"
+            return {'msg_text': msg_text, 'emb': emb}
+
+        res = res[0]
+        media_type = res['media_type']
+        if media_type == "movie":
+            mt = "电影"
+            date = res['release_date']
+            title = res['title']
+            original_title = res['original_title']
+
+        elif media_type == "tv":
+            mt = "剧集"
+            date = res["first_air_date"]
+            title = res["name"]
+            original_title = res["original_name"]
+
+        overview = res['overview']
+        if original_title != title:
+            original_title = f"《{title}》({original_title})"
+        else:
+            original_title = f"《{title}》"
+        title = f"{title}({mt})"
+        desc = title + "\n" + f"上映时间: {date}\n" + f"简介: {overview}"
+        emb = Embed(title=title, description=desc)
+
+        poster_path = res["poster_path"]
+        if poster_path:
+            image_url = "https://image.tmdb.org/t/p/w500" + poster_path
+            emb.set_image(url=image_url)
+        return {'msg_text': desc, 'emb': emb}
+
+    async def __call__(self, ctx, query: str):
+        msg = ctx.message
+        if not query.strip() and msg.reference:
+            query = msg.reference.cached_message.content
+        msg = await ctx.message.reply('Loading ...')
+        try:
+            reply = self.generate_reply(query)
+        except Exception as e:
+            msg_text = f'No Movie page for "{query}"'
+            reply = {"msg_text": msg_text, 'emb': None}
+            raise e
+
+        reply_text = reply['msg_text']
+        reply_text = f'[{query}]:\n' + reply_text
+        reply_emb = reply['emb']
+        if reply_emb:
+            await msg.edit(content="", embed=reply_emb)
+        else:
+            await msg.edit(content=reply_text)

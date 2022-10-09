@@ -223,11 +223,14 @@ class Music:
             return "Unknown"
 
     @property
-    def duration_str(self) -> Optional[int]:
+    def duration_str(self) -> Optional[str]:
         if self.duration:
             m = self.duration // 60
             s = self.duration % 60
-            return f"{m:02d}:{s:02d}"
+            try:
+                return f"{m:02d}:{s:02d}"
+            except ValueError:
+                return "Unknown"
         else:
             return "Unknown"
 
@@ -329,7 +332,7 @@ class MusicList:
                 if duration == "None":
                     duration = None
                 else:
-                    duration = int(duration)
+                    duration = int(float(duration))
                 music = Music(title=title, web_url=web_url, duration=duration)
                 self.dq.append(music)
         logger.debug(f"The music list is updated!: {len(self.dq)}")

@@ -11,6 +11,7 @@ from discord.ext import commands
 from lib.streamer import Streamer
 import sys
 from pathlib import Path
+import configparser
 
 
 # bot = Bot(intents=Intents.default(), self_bot=True, command_prefix='/')
@@ -27,6 +28,10 @@ from pathlib import Path
 
 
 bot = commands.Bot(command_prefix='-')
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+discord_token = config.get("discord", "token")
+tmdb_token = config.get("tmdb", "token")
 
 
 py_hdl = cmd.PinyinCMD()
@@ -84,6 +89,28 @@ async def mp3(ctx, *args):
     text = ' '.join(args)
     await mp3_hdl(ctx, text)
 
+book_hdl = cmd.BookCMD()
+@bot.command(
+    name=book_hdl.name,
+    brief=book_hdl.brief,
+    description=book_hdl.description,
+    usage=book_hdl.usage
+)
+async def search_book(ctx, *args):
+    text = ' '.join(args)
+    await book_hdl(ctx, text)
+
+movie_hdl = cmd.MovieCMD(tmdb_token)
+@bot.command(
+    name=movie_hdl.name,
+    brief=movie_hdl.brief,
+    description=movie_hdl.description,
+    usage=movie_hdl.usage
+)
+async def search_movie(ctx, *args):
+    text = ' '.join(args)
+    await movie_hdl(ctx, text)
+
 @bot.event
 async def on_ready():
     print('We have logged in as {0.user}'.format(bot))
@@ -100,4 +127,4 @@ async def on_ready():
 conf_path = Path(__file__).parent.absolute()
 bot.add_cog(Streamer(bot,conf_path))
 
-bot.run(sys.argv[1])
+bot.run(discord_token)

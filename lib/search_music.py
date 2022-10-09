@@ -126,7 +126,8 @@ class YoutubeMusic:
         file_path = self.down_path.joinpath(file_name)
         if you_get:
             down_url = "https://www.youtube.com/watch?v=" + video_id
-            cmd_info = ["you-get", "-c", str(self.cookie_file), "-i", down_url]
+            # cmd_info = ["you-get", "-c", str(self.cookie_file), "-i", down_url]
+            cmd_info = ["you-get", "-i", down_url]
             print(" ".join(cmd_info))
             output = subprocess.check_output(cmd_info).decode("utf-8")
             items = self.you_get_to_dict(output)
