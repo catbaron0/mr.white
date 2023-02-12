@@ -1,40 +1,39 @@
-# from discord import Intents, Client
-# from discord.ext.commands import Bot
-# from discord_slash import SlashCommand
-# from discord_slash.utils.manage_components import create_button, create_actionrow
-# from discord_slash.model import ButtonStyle
-# from discord import Client, Intents, Embed
-# from discord_slash import SlashCommand, SlashContext
-
-import lib.cmd as cmd
-from discord.ext import commands
-from lib.streamer import Streamer
 import sys
 from pathlib import Path
 import configparser
+import asyncio
+
+import discord
+from discord.ext import commands
+
+import lib.cmd as cmd
+from lib.streamer import Streamer
 
 
-# bot = Bot(intents=Intents.default(), self_bot=True, command_prefix='/')
-# slash = SlashCommand(bot)
-# bot.load_extension("lib.streamer")
-# @bot.command(name="btn")
-# async def buttons(ctx, arg):
-#     buttons = [
-#         create_button(style=ButtonStyle.green, label="��"),
-#         create_button(style=ButtonStyle.blue, label="⏸️")
-#     ]
-#     action_row = create_actionrow(*buttons)
-#     await ctx.send("test", components=[action_row])
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
 
+bot = commands.Bot(command_prefix='-', intents=intents)
+conf_path = Path(__file__).parent.absolute()
 
-bot = commands.Bot(command_prefix='-')
 config = configparser.ConfigParser()
 config.read(sys.argv[1])
 discord_token = config.get("discord", "token")
 tmdb_token = config.get("tmdb", "token")
+openai_key = config.get("openai", "key")
 
 
 py_hdl = cmd.PinyinCMD()
+wiki_hdl = cmd.WikiCMD()
+meme_hdl = cmd.MemeCMD()
+tr_hdl = cmd.TranslateCMD()
+mp3_hdl = cmd.Mp3CMD()
+book_hdl = cmd.BookCMD()
+movie_hdl = cmd.MovieCMD(tmdb_token)
+chat_hdl = cmd.GptCMD(openai_key)
+
+
 @bot.command(
     name=py_hdl.name,
     brief=py_hdl.brief,
@@ -45,7 +44,7 @@ async def pinyin(ctx, *args):
     words = ' '.join(args)
     await py_hdl(ctx, words)
 
-wiki_hdl = cmd.WikiCMD()
+
 @bot.command(
     name=wiki_hdl.name,
     brief=wiki_hdl.brief,
@@ -56,7 +55,7 @@ async def wiki(ctx, *args):
     words = ' '.join(args)
     await wiki_hdl(ctx, words)
 
-meme_hdl = cmd.MemeCMD()
+
 @bot.command(
     name=meme_hdl.name,
     brief=meme_hdl.brief,
@@ -67,7 +66,7 @@ async def meme(ctx, *args):
     meme = ' '.join(args)
     await meme_hdl(ctx, meme)
 
-tr_hdl = cmd.TranslateCMD()
+
 @bot.command(
     name=tr_hdl.name,
     brief=tr_hdl.brief,
@@ -78,7 +77,7 @@ async def translate(ctx, *args):
     text = ' '.join(args)
     await tr_hdl(ctx, text)
 
-mp3_hdl = cmd.Mp3CMD()
+
 @bot.command(
     name=mp3_hdl.name,
     brief=mp3_hdl.brief,
@@ -89,7 +88,7 @@ async def mp3(ctx, *args):
     text = ' '.join(args)
     await mp3_hdl(ctx, text)
 
-book_hdl = cmd.BookCMD()
+
 @bot.command(
     name=book_hdl.name,
     brief=book_hdl.brief,
@@ -100,7 +99,7 @@ async def search_book(ctx, *args):
     text = ' '.join(args)
     await book_hdl(ctx, text)
 
-movie_hdl = cmd.MovieCMD(tmdb_token)
+
 @bot.command(
     name=movie_hdl.name,
     brief=movie_hdl.brief,
@@ -111,20 +110,27 @@ async def search_movie(ctx, *args):
     text = ' '.join(args)
     await movie_hdl(ctx, text)
 
+
+@bot.command(
+    name=chat_hdl.name,
+    brief=chat_hdl.brief,
+    description=chat_hdl.description,
+    usage=chat_hdl.usage
+)
+async def chat(ctx, *args):
+    text = ' '.join(args)
+    await chat_hdl(ctx, text)
+
+
 @bot.event
 async def on_ready():
     print('We have logged in as {0.user}'.format(bot))
 
-# @bot.event
-# async def on_message(message):
-#     msg_txt = message.content
-#     if msg_txt.startswith('-'):
-#         reply = "Are you tring yo run a command?\n"
-#         reply += "Pleash try to use / instead."
-#         await message.reply(reply)
-#     await bot.process_commands(message)
 
-conf_path = Path(__file__).parent.absolute()
-bot.add_cog(Streamer(bot,conf_path))
+async def main():
+    await bot.add_cog(Streamer(bot, conf_path))
 
-bot.run(discord_token)
+
+if __name__ == '__main__':
+    asyncio.run(main())
+    bot.run(discord_token)

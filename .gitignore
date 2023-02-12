@@ -124,3 +124,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom
+test.py
+play.*
+random.*
+config.ini

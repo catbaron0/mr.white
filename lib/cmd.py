@@ -11,6 +11,7 @@ import subprocess
 from lib.search_music import YoutubeMusic
 from pathlib import Path
 from bs4 import BeautifulSoup as bs
+import openai
 
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,6 @@ fh.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message
 ch.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(fh)
 logger.addHandler(ch)
-
 
 
 class PinyinCMD:
@@ -115,7 +115,7 @@ class MemeCMD:
         if not meme.strip() and msg.reference:
             meme = msg.reference.cached_message.content
         msg = await ctx.message.reply('Loading ...')
-        data = {"phrase": meme, "page":1}
+        data = {"phrase": meme, "page": 1}
         data = json.dumps(data)
         try:
             res = requests.post(self.url, data=data, headers=self.headers, proxies={"https": "socks5://localhost:1111"})
@@ -147,14 +147,13 @@ class MemeCMD:
         content = self.regex.sub(r'\1', content)
         reply_text = f'[{term}]:\n' + content
         if len(reply_text) > 200:
-            reply_text = reply_text[:200]+' ...'
+            reply_text = reply_text[:200] + ' ...'
         await msg.edit(content=reply_text)
 
 
 class TranslateCMD:
     def __init__(self):
         self.active_chats = list()
-        # self.url = 'http://fanyi.youdao.com/translate?smartresult=dict&smartresult=rule&smartresult=ugc&sessionFrom=null'
         self.url = 'http://translate.google.cn/m?q=%s&tl=%s&sl=%s'
 
         self.name = 'tr'
@@ -166,7 +165,7 @@ class TranslateCMD:
     def translate(text, to_language="zh-CN", text_language="auto"):
         GOOGLE_TRANSLATE_URL = 'http://translate.google.cn/m?q=%s&tl=%s&sl=%s'
         text = parse.quote(text)
-        url = GOOGLE_TRANSLATE_URL % (text,to_language,text_language)
+        url = GOOGLE_TRANSLATE_URL % (text, to_language, text_language)
         response = requests.get(url)
         data = response.text
         expr = r'(?s)class="(?:t0|result-container)">(.*?)<'
@@ -196,7 +195,7 @@ class TranslateCMD:
             'version': '2.1',
             'keyfrom': 'fanyi.web',
             'ue': 'utf-8',
-            'action':'FY_BY_CLICKBUTTON',
+            'action': 'FY_BY_CLICKBUTTON',
             'typoResult': 'true'
         }
         try:
@@ -243,7 +242,6 @@ class Mp3CMD:
         )
         stdout, stderr = process.communicate()
         title = target
-
 
         await reply_msg.edit(content='在传了，等我两分钟...')
         cmd_info = ['transfer', 'wet', str(title)]
@@ -306,7 +304,7 @@ class BookCMD:
         title = soup.select("#bookTitle")[0].text.strip()
         authors = ",".join([n.text for n in soup.find_all("span", itemprop="name")])
         desc = soup.select("#description")[0].text.strip()
-        summary =  f"《{title}》\n作者: {authors})\n{desc}\n"
+        summary = f"《{title}》\n作者: {authors})\n{desc}\n"
         emb = Embed(title=title, url=info_url, description=summary)
         return {'msg_text': summary, 'emb': emb}
 
@@ -334,7 +332,10 @@ class BookCMD:
 class MovieCMD:
     def __init__(self, token: str):
         self.token = token
-        self.url_search = f'https://api.themoviedb.org/3/search/multi?api_key={token}&language=zh-ch&page=1&include_adult=false&query='
+        self.url_search = (
+            'https://api.themoviedb.org/3/search/multi?api_key='
+            f'{token}&language=zh-ch&page=1&include_adult=false&query='
+        )
 
         self.name = 'movie'
         self.usage = 'Title'
@@ -352,7 +353,7 @@ class MovieCMD:
             msg_text = "出事了，快让猫过来看看怎么回事。"
             return {'msg_text': msg_text, 'emb': emb}
         if not res or res[0]['media_type'] not in ("movie", "tv"):
-            msg_text =  "这名字你瞎编的吧，放映员说他没看过。"
+            msg_text = "这名字你瞎编的吧，放映员说他没看过。"
             return {'msg_text': msg_text, 'emb': emb}
 
         res = res[0]
@@ -403,3 +404,42 @@ class MovieCMD:
             await msg.edit(content="", embed=reply_emb)
         else:
             await msg.edit(content=reply_text)
+
+
+class GptCMD:
+    def __init__(self, openai_key):
+        self.bot = None
+        self.name = 'gpt'
+        self.usage = '你的问题'
+        self.brief = 'A chatGPT driven chat bot.'
+        self.description = self.brief
+        self.is_free = True
+        openai.api_key = openai_key
+
+    async def __call__(self, ctx, prompt: str):
+        words = []
+        reply = ""
+        if not self.is_free:
+            msg = await ctx.message.reply("Thinking about last question, please try later...")
+        else:
+            msg = ctx.message
+            msg = await ctx.message.reply("Thinking...")
+        try:
+            async with ctx.typing():
+                print("Asking bot")
+                # response = self.bot.ask(que)
+                response = openai.Completion.create(
+                    engine="text-davinci-003",
+                    prompt=prompt,
+                    max_tokens=2048,
+                    stream=True
+                )
+                for res in response:
+                    words.append(res["choices"][0]["text"])
+                    if len(words) % 5 == 0:
+                        reply = ''.join(words).strip()
+                        await msg.edit(content=reply)
+        except Exception as e:
+            reply += f"Error: ```\n{e}\n```"
+            await msg.edit(content=reply)
+        print("reply:", reply)
