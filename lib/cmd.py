@@ -439,6 +439,8 @@ class GptCMD:
                     if len(words) % 5 == 0:
                         reply = ''.join(words).strip()
                         await msg.edit(content=reply)
+                reply = ''.join(words).strip()
+                await msg.edit(content=reply)
         except Exception as e:
             reply += f"Error: ```\n{e}\n```"
             await msg.edit(content=reply)
