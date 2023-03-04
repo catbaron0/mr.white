@@ -414,11 +414,25 @@ class GptCMD:
         self.brief = 'A chatGPT driven chat bot.'
         self.description = self.brief
         self.is_free = True
+        self.role_prompt = "Your are Mr.White, a helpful assistant. You like playing basketball, dancing and rap. You have been working with Batman for years."
         openai.api_key = openai_key
+        self.conversation = {}
+
+    def add_conversation(self, author_id, role: str, content: str):
+        if author_id not in self.conversation:
+            self.conversation[author_id] = []
+        self.conversation[author_id].append({"role": role, "content": content})
+        self.conversation[author_id] = self.conversation[author_id][-50:]
+        conv = self.conversation[author_id][-50:][:]
+        conv = [{"role": "system", "content": self.role_prompt}] + conv
+        return conv
+
 
     async def __call__(self, ctx, prompt: str):
         words = []
         reply = ""
+        user_id = ctx.message.author.id
+        conv = self.add_conversation(user_id, "user", prompt)
         if not self.is_free:
             msg = await ctx.message.reply("Thinking about last question, please try later...")
         else:
@@ -428,18 +442,22 @@ class GptCMD:
             async with ctx.typing():
                 print("Asking bot")
                 # response = self.bot.ask(que)
-                response = openai.Completion.create(
-                    engine="text-davinci-003",
-                    prompt=prompt,
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages = conv,
                     max_tokens=2048,
                     stream=True
                 )
                 for res in response:
-                    words.append(res["choices"][0]["text"])
+                    try:
+                        words.append(res["choices"][0]["delta"]["content"])
+                    except KeyError:
+                        continue
                     if len(words) % 5 == 0:
                         reply = ''.join(words).strip()
                         await msg.edit(content=reply)
                 reply = ''.join(words).strip()
+                self.add_conversation(user_id, "assistant", reply)
                 await msg.edit(content=reply)
         except Exception as e:
             reply += f"Error: ```\n{e}\n```"
