@@ -422,8 +422,8 @@ class GptCMD:
         if author_id not in self.conversation:
             self.conversation[author_id] = []
         self.conversation[author_id].append({"role": role, "content": content})
-        self.conversation[author_id] = self.conversation[author_id][-50:]
-        conv = self.conversation[author_id][-50:][:]
+        self.conversation[author_id] = self.conversation[author_id][-0:]
+        conv = self.conversation[author_id][-0:][:]
         conv = [{"role": "system", "content": self.role_prompt}] + conv
         return conv
 
