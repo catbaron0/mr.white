@@ -49,12 +49,12 @@ class RepeaterManager(commands.Cog):
             channel = None
         guild = ctx.guild
         if not channel:
-            await ctx.message.reply("❌语音频道活跃测试...")
+            await ctx.message.reply("❌ 语音频道活跃测试...")
             return
 
         if guild.id in self.repeaters:
             # The bot is working
-            await ctx.message.reply(f"复读机模块繁忙: {channel.name}")
+            await ctx.message.reply(f"❌ 复读机模块繁忙: {channel.name}")
 
         else:
             await channel.connect()
