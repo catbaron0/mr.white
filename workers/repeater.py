@@ -43,9 +43,10 @@ class Repeater:
                 )
                 print(voice_cfg)
                 voice = voice_cfg["voice"]
-                ins = voice_cfg.get("instruction", "沉稳的")
+                ins = voice_cfg.get("ins", "沉稳的")
+                speed = voice_cfg.get("speed", 1.1)
                 # 生成音频文件
-                audio_f = tts_f(text, voice, ins)
+                audio_f = tts_f(text, voice, ins, speed)
                 options = '-vn -acodec libopus'
                 source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
 
@@ -114,6 +115,7 @@ class RepeaterManager(commands.Cog):
 
     async def update_config(self, ctx):
         guild_id = ctx.guild.id
+        print("更新配置文件")
         try:
             self.repeaters[guild_id].load_config()
             await ctx.message.reply("✅...配置文件已更新")
@@ -126,7 +128,7 @@ class RepeaterManager(commands.Cog):
         if args and args[0] == "stop":
             await self.stop_repeat(ctx)
         if args and args[0] == "cfg":
-            self.update_config(ctx)
+            await self.update_config(ctx)
 
     @commands.Cog.listener()
     async def on_message(self, message):
