@@ -2,32 +2,6 @@ import subprocess
 import tempfile
 import os
 
-import pyttsx3
-
-def _tts_f(text: str) -> str:
-    """将文本转换为语音并保存到临时文件，返回文件路径"""
-    engine = pyttsx3.init(driverName='espeak')
-    
-    # 设置中文语音（Windows: Huihui, macOS: Ting-Ting）
-    for voice in engine.getProperty("voices"):
-        if "Huihui" in voice.name or "Ting-Ting" in voice.name:
-            engine.setProperty("voice", voice.id)
-            break
-
-    engine.setProperty("rate", 150)  # 语速
-    engine.setProperty("volume", 1.0)  # 音量
-
-    # 创建临时文件
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    temp_path = temp_file.name
-    temp_file.close()
-
-    # 保存语音到临时文件
-    engine.save_to_file(text, temp_path)
-    engine.runAndWait()
-
-    return temp_path
-
 
 def tts_f(text):
     # 创建一个唯一的临时文件路径，后缀为 .aiff（macOS 支持的音频格式）

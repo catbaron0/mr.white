@@ -15,26 +15,19 @@ tr_hdl = TranslateCMD()
 repeater_manager = RepeaterManager(bot)
 
 
-# @bot.event
-# async def on_message(message):
-#     print(message)
-
-# 使用普通命令装饰器
-@bot.command(name="hello")
-async def hello(ctx):
-    print("hello command triggered")
-    await ctx.send("你好！👋")
-
-
-@bot.command(name="bye")
-async def bye(ctx):
-    print("bye command triggered")
-    await ctx.send("再见！👋")
-
 @bot.command(name="rp")
 async def repeater(ctx, args):
     print("rp command triggered")
     await repeater_manager.run(ctx, args)
+
+
+@bot.command(name="white")
+async def help(ctx):
+    help_msg = (
+        "-rp start: 开启复读\n"
+        "-rp stop: 关闭复读\n"
+    )
+    await ctx.message.reply(help_msg)
 
 
 @bot.event

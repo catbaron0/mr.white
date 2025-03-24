@@ -1,10 +1,11 @@
 import asyncio
 
-from discord import FFmpegOpusAudio
+from discord import FFmpegOpusAudio, Message, User, Member
 from discord.ext import commands
 
-from utils.tts import tts_f
-from utils.text_processing import process_content, process_user_name
+from utils.open_ai import tts_f
+from utils.text_processing import generate_script
+from config import config
 
 
 class Repeater:
@@ -13,28 +14,67 @@ class Repeater:
         self.channel = channel
         self.guild = guild
         self.vc = guild.voice_client
+        self.is_playing = False
+        self.load_config()
         asyncio.create_task(self.read_messages())
+
+    def load_config(self):
+        self.voice_config = config.load_voices_config()
+        self.user_name_config = config.load_username_config()
+
+    def get_user_name(self, member: Member | User) -> str:
+        user_name = member.display_name
+        user_id = member.id
+        return self.user_name_config.get(str(user_id), user_name)
 
     async def read_messages(self):
         while True:
-            msg = await self.message_queue.get()
-            user_name = process_user_name(msg.author.display_name)
-            content = process_content(msg.content.strip())
-            if content:
-                if len(content) > 50: 
-                    text = f"{user_name}说了很多东西你们自己看吧"
-                else:
-                    text = f"{user_name}说, {content}"
-                print(text)
+            if not self.vc.is_playing() and not self.message_queue.empty():
+                self.is_playing = True  # 标记正在播放
+                msg_type, user_id, user_name, content = await self.message_queue.get()
+                text = generate_script(msg_type, user_name, content)
+                if not text:
+                    continue
 
-                audio_f = tts_f(text)
+                print(text)
+                # 读取用户配置
+                voice_cfg = self.voice_config.get(
+                    user_id, self.voice_config["default"]
+                )
+                print(voice_cfg)
+                voice = voice_cfg["voice"]
+                ins = voice_cfg.get("instruction", "沉稳的")
+                # 生成音频文件
+                audio_f = tts_f(text, voice, ins)
                 options = '-vn -acodec libopus'
                 source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
-                self.vc.play(source)
 
-    async def append_message(self, message):
-        if message.channel.id == self.channel.id:
-            await self.message_queue.put(message)
+                self.vc.play(
+                    source, after=lambda e: asyncio.run_coroutine_threadsafe(
+                        self.read_messages(),
+                        asyncio.get_running_loop()
+                    )
+                )
+            await asyncio.sleep(1)
+
+    async def append_message(self, message: Message):
+        if message.channel.id != self.channel.id:
+            return
+        print(message)
+        msg_type = "text"
+        user_name = self.get_user_name(message.author)
+        user_id = str(message.author.id)
+        content = message.content
+        if message.stickers:
+            content = str(len(message.stickers))
+            msg_type = "sticker"
+        await self.message_queue.put((msg_type, user_id, user_name, content))
+
+    async def append_member_enter_exit_channel(self, member: Member, channel, msg_type: str):
+        if self.channel.id == channel.id:
+            user_name = self.get_user_name(member)
+            user_id = str(member.id)
+            await self.message_queue.put((msg_type, user_id, user_name, ""))
 
 
 class RepeaterManager(commands.Cog):
@@ -49,19 +89,19 @@ class RepeaterManager(commands.Cog):
             channel = None
         guild = ctx.guild
         if not channel:
-            await ctx.message.reply("❌ 语音频道活跃测试...")
+            await ctx.message.reply("❌...语音频道活跃测试...")
             return
 
         if guild.id in self.repeaters:
             # The bot is working
-            await ctx.message.reply(f"❌ 复读机模块繁忙: {channel.name}")
+            await ctx.message.reply(f"❌...复读模块繁忙: {channel.name}")
 
         else:
             await channel.connect()
             self.repeaters[guild.id] = Repeater(ctx.guild, channel)
             await ctx.message.reply(
-                "✅ 语音频道活跃测试...\n"
-                f"✅ 复读机模块就位: {channel.name}"
+                "✅...语音频道活跃测试...\n"
+                f"✅...复读模块就位: {channel.name}"
             )
 
     async def stop_repeat(self, ctx):
@@ -72,11 +112,21 @@ class RepeaterManager(commands.Cog):
                 await vc.disconnect()
             del self.repeaters[guild_id]
 
+    async def update_config(self, ctx):
+        guild_id = ctx.guild.id
+        try:
+            self.repeaters[guild_id].load_config()
+            await ctx.message.reply("✅...配置文件已更新")
+        except Exception as e:
+            await ctx.message.reply(f"❌...配置文件更新失败: {e}")
+
     async def run(self, ctx, *args):
         if args and args[0] == "start":
             await self.start_repeat(ctx)
         if args and args[0] == "stop":
             await self.stop_repeat(ctx)
+        if args and args[0] == "cfg":
+            self.update_config(ctx)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -88,4 +138,26 @@ class RepeaterManager(commands.Cog):
             return
         guild_id = message.guild.id
         if guild_id in self.repeaters:
-            await self.repeaters[message.guild.id].append_message(message)
+            await self.repeaters[guild_id].append_message(message)
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """监听用户语音状态变化"""
+        print(member, before, after)
+
+        if before.channel and after.channel and before.channel.id == after.channel.id:
+            return
+
+        if before.channel is not None:
+            # 用户加入语音频道
+            guild_id = before.channel.guild.id
+            msg_type = "exit"
+            if guild_id in self.repeaters:
+                await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
+
+        if after.channel is not None:
+            # 用户加入语音频道
+            msg_type = "enter"
+            guild_id = after.channel.guild.id
+            if guild_id in self.repeaters:
+                await self.repeaters[guild_id].append_member_enter_exit_channel(member, after.channel, msg_type)
