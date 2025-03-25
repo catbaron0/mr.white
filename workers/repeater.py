@@ -14,7 +14,6 @@ class Repeater:
         self.channel = channel
         self.guild = guild
         self.vc = guild.voice_client
-        self.is_playing = False
         self.load_config()
         asyncio.create_task(self.read_messages())
 
@@ -27,36 +26,52 @@ class Repeater:
         user_id = member.id
         return self.user_name_config.get(str(user_id), user_name)
 
+    async def read_message_f(self, text: str, voice_cfg: dict):
+        # 读取用户配置
+        voice = voice_cfg["voice"]
+        ins = voice_cfg.get("ins", "沉稳的")
+        speed = voice_cfg.get("speed", 1.5)
+        # 生成音频文件
+        audio_f = tts_f(text, voice, ins, speed)
+        print(audio_f)
+        options = '-vn -acodec libopus'
+        source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
+        self.vc.play(source)
+        while self.vc.is_playing():
+            await asyncio.sleep(0.1)
+
+    async def read_message_s(self, text: str, voice_cfg: dict):
+        """播放 TTS 语音到 Discord 语音频道"""
+        voice = voice_cfg["voice"]
+        ins = voice_cfg.get("ins", "沉稳的")
+        speed = voice_cfg.get("speed", 1.5)
+
+        audio_buffer = await tts_s(text, voice, ins, speed)
+        options = '-vn -acodec libopus'
+        source = FFmpegOpusAudio(audio_buffer, bitrate=256, before_options="", options=options)
+        self.vc.play(source)
+        while self.vc.is_playing():
+            await asyncio.sleep(0.1)
+
     async def read_messages(self):
         while True:
-            if not self.vc.is_playing() and not self.message_queue.empty():
-                self.is_playing = True  # 标记正在播放
-                msg_type, user_id, user_name, content = await self.message_queue.get()
-                text = generate_script(msg_type, user_name, content)
-                if not text:
-                    continue
+            if self.vc.is_playing() or self.message_queue.empty():
+                await asyncio.sleep(0.1)
+                continue
 
-                print(text)
-                # 读取用户配置
-                voice_cfg = self.voice_config.get(
-                    user_id, self.voice_config["default"]
-                )
-                print(voice_cfg)
-                voice = voice_cfg["voice"]
-                ins = voice_cfg.get("ins", "沉稳的")
-                speed = voice_cfg.get("speed", 1.1)
-                # 生成音频文件
-                audio_f = tts_f(text, voice, ins, speed)
-                options = '-vn -acodec libopus'
-                source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
+            msg_type, user_id, user_name, content = await self.message_queue.get()
+            text = generate_script(msg_type, user_name, content)
+            if not text:
+                await asyncio.sleep(0.1)
+                continue
 
-                self.vc.play(
-                    source, after=lambda e: asyncio.run_coroutine_threadsafe(
-                        self.read_messages(),
-                        asyncio.get_running_loop()
-                    )
-                )
-            await asyncio.sleep(1)
+            print(text)
+            # 读取用户配置
+            voice_cfg = self.voice_config.get(
+                user_id, self.voice_config["default"]
+            )
+            print(voice_cfg)
+            await self.read_message_f(text, voice_cfg)
 
     async def append_message(self, message: Message):
         if message.channel.id != self.channel.id:
