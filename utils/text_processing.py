@@ -43,9 +43,10 @@ def process_user_name(text: str) -> str:
     )
 
 
-def generate_script(msg_type: str, user_name: str, content: str) -> str:
+def generate_script(msg_type: str, user_name: str, content: str | list[str]) -> str:
     user_name = process_user_name(user_name)
-    content = process_content(content)
+    if isinstance(content, str):
+        content = process_content(content)
 
     if msg_type == "text" and content:
         if len(content) > 100:
@@ -63,4 +64,10 @@ def generate_script(msg_type: str, user_name: str, content: str) -> str:
     if msg_type == "exit":
         return f"{user_name} 走了。"
 
+    if msg_type == "reaction" and isinstance(content, list):
+        target_user_name, emoji = content
+        emoji = process_emoji(emoji)
+        if not emoji:
+            emoji = "表情包"
+        return f"{user_name} 用 {emoji} 回应了 {target_user_name}。"
     return ""

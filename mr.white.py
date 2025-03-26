@@ -17,7 +17,6 @@ repeater_manager = RepeaterManager(bot)
 
 @bot.command(name="rp")
 async def repeater(ctx, args):
-    print("rp command triggered")
     await repeater_manager.run(ctx, args)
 
 

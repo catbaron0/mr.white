@@ -1,6 +1,8 @@
 import asyncio
+import os
+from pathlib import Path
 
-from discord import FFmpegOpusAudio, Message, User, Member
+from discord import FFmpegOpusAudio, Message, User, Member, Reaction
 from discord.ext import commands
 
 from utils.open_ai import tts_f
@@ -11,10 +13,13 @@ from config import config
 class Repeater:
     def __init__(self, guild, channel):
         self.message_queue = asyncio.Queue()
+        self.audio_queue = asyncio.Queue()
         self.channel = channel
         self.guild = guild
         self.vc = guild.voice_client
         self.load_config()
+        self.loop = asyncio.get_running_loop()
+        asyncio.create_task(self.messages_to_audio())
         asyncio.create_task(self.read_messages())
 
     def load_config(self):
@@ -26,52 +31,44 @@ class Repeater:
         user_id = member.id
         return self.user_name_config.get(str(user_id), user_name)
 
-    async def read_message_f(self, text: str, voice_cfg: dict):
-        # 读取用户配置
-        voice = voice_cfg["voice"]
-        ins = voice_cfg.get("ins", "沉稳的")
-        speed = voice_cfg.get("speed", 1.5)
-        # 生成音频文件
-        audio_f = tts_f(text, voice, ins, speed)
-        print(audio_f)
-        options = '-vn -acodec libopus'
-        source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
-        self.vc.play(source)
-        while self.vc.is_playing():
-            await asyncio.sleep(0.1)
-
-    async def read_message_s(self, text: str, voice_cfg: dict):
-        """播放 TTS 语音到 Discord 语音频道"""
-        voice = voice_cfg["voice"]
-        ins = voice_cfg.get("ins", "沉稳的")
-        speed = voice_cfg.get("speed", 1.5)
-
-        audio_buffer = await tts_s(text, voice, ins, speed)
-        options = '-vn -acodec libopus'
-        source = FFmpegOpusAudio(audio_buffer, bitrate=256, before_options="", options=options)
-        self.vc.play(source)
-        while self.vc.is_playing():
-            await asyncio.sleep(0.1)
-
-    async def read_messages(self):
+    async def messages_to_audio(self):
         while True:
-            if self.vc.is_playing() or self.message_queue.empty():
+            if self.message_queue.empty():
                 await asyncio.sleep(0.1)
                 continue
-
             msg_type, user_id, user_name, content = await self.message_queue.get()
             text = generate_script(msg_type, user_name, content)
             if not text:
+                continue
+            voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
+            voice = voice_cfg["voice"]
+            ins = voice_cfg.get("ins", "沉稳的")
+            speed = voice_cfg.get("speed", 4.0)
+            # 生成音频文件
+            await self.audio_queue.put(tts_f(text, voice, ins, speed))
+
+    async def read_messages(self):
+        while True:
+            if self.vc.is_playing() or self.audio_queue.empty():
                 await asyncio.sleep(0.1)
                 continue
-
-            print(text)
-            # 读取用户配置
-            voice_cfg = self.voice_config.get(
-                user_id, self.voice_config["default"]
+            while self.vc.is_playing():
+                await asyncio.sleep(0.1)
+            audio_f = await self.audio_queue.get()
+            options = '-vn -acodec libopus'
+            source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
+            self.vc.play(
+                source,
+                after=lambda e: asyncio.run_coroutine_threadsafe(
+                    self.cleanup(audio_f),
+                    self.loop
+                )
             )
-            print(voice_cfg)
-            await self.read_message_f(text, voice_cfg)
+    
+    async def cleanup(self, audio_f):
+        await asyncio.sleep(1)
+        if Path(audio_f).exists():
+            os.remove(audio_f)
 
     async def append_message(self, message: Message):
         if message.channel.id != self.channel.id:
@@ -88,9 +85,18 @@ class Repeater:
 
     async def append_member_enter_exit_channel(self, member: Member, channel, msg_type: str):
         if self.channel.id == channel.id:
-            user_name = self.get_user_name(member)
-            user_id = str(member.id)
-            await self.message_queue.put((msg_type, user_id, user_name, ""))
+            return
+        user_name = self.get_user_name(member)
+        user_id = str(member.id)
+        await self.message_queue.put((msg_type, user_id, user_name, ""))
+
+    async def append_reaction_add(self, reaction: Reaction, user: Member | User):
+        if reaction.message.channel.id != self.channel.id:
+            return
+        user_name = self.get_user_name(user)
+        target_user_name = self.get_user_name(reaction.message.author)
+        user_id = str(user.id)
+        await self.message_queue.put(("reaction", user_id, user_name, [target_user_name, reaction.emoji]))
 
 
 class RepeaterManager(commands.Cog):
@@ -178,3 +184,11 @@ class RepeaterManager(commands.Cog):
             guild_id = after.channel.guild.id
             if guild_id in self.repeaters:
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, after.channel, msg_type)
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction: Reaction, user: Member | User):
+        if user.bot or not reaction.message.guild:
+            return
+        guild_id = reaction.message.guild.id
+        if guild_id in self.repeaters:
+            await self.repeaters[guild_id].append_reaction_add(reaction, user)
