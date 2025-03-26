@@ -84,7 +84,7 @@ class Repeater:
         await self.message_queue.put((msg_type, user_id, user_name, content))
 
     async def append_member_enter_exit_channel(self, member: Member, channel, msg_type: str):
-        if self.channel.id == channel.id:
+        if self.channel.id != channel.id:
             return
         user_name = self.get_user_name(member)
         user_id = str(member.id)
