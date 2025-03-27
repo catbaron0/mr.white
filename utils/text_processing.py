@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
-import json
+from functools import partial
+
+
+from  discord import Emoji, PartialEmoji
 
 
 CONFIG_PATH = Path(__file__).parent
@@ -14,18 +17,35 @@ def replace_links(text):
     return re.sub(url_pattern, "看这个链接", text)
 
 
-def process_content(text: str) -> str:
+def process_content(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
+    print("DEBUG process emoji:", text)
+    text = str(text)
+
     text = re.sub("@\d+", "那个谁", text)
-    text = process_emoji(text)
+    text = process_emoji(text, emoji_dict, custom_emoji_dict)
     text = replace_links(text)
     return text
 
 
-def process_emoji(text: str) -> str:
-    with open(CONFIG_PATH / "emoji.json", "r", encoding="utf-8") as file:
-        emoji_data = json.load(file)
-    for emoji, description in emoji_data.items():
-        text = text.replace(emoji, description)
+def translate_emoji(emoji: str, emoji_dict: dict, custom_emoji_dict) -> str:
+    if isinstance(emoji, Emoji) or isinstance(emoji, PartialEmoji):
+        return custom_emoji_dict.get(emoji.name, "一个表情")
+    return emoji_dict.get(emoji, " emoji ")
+
+
+def _replace_emoji(match, emoji_dict: dict):
+    emoji_name = match.group(1)
+    return emoji_dict.get(emoji_name, "一个表情") 
+
+
+def process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
+    # process custom emoji
+    text = re.sub(r"<[a-z]?:(.+):\d+>", partial(_replace_emoji, emoji_dict=custom_emoji_dict), text)
+
+    # process emoji
+    pattern = "|".join(map(re.escape, emoji_dict.keys()))
+    text = re.sub(pattern, lambda match: emoji_dict.get(match.group(0), "emoji"), text)
+
     return text
 
 
@@ -41,33 +61,3 @@ def process_user_name(text: str) -> str:
     ).replace(
         "𝘣𝘭𝘶𝘦𝘺", "bluey"
     )
-
-
-def generate_script(msg_type: str, user_name: str, content: str | list[str]) -> str:
-    user_name = process_user_name(user_name)
-    if isinstance(content, str):
-        content = process_content(content)
-
-    if msg_type == "text" and content:
-        if len(content) > 100:
-            text = f"{user_name}说了很多东西你们自己看吧"
-        else:
-            text = f"{user_name}说, {content}"
-        return text
-
-    if msg_type == "sticker":
-        return f"{user_name}发了{content}个表情包。"
-
-    if msg_type == "enter":
-        return f"{user_name} 来了。"
-
-    if msg_type == "exit":
-        return f"{user_name} 走了。"
-
-    if msg_type == "reaction" and isinstance(content, list):
-        target_user_name, emoji = content
-        emoji = process_emoji(emoji)
-        if not emoji:
-            emoji = "表情包"
-        return f"{user_name} 用 {emoji} 回应了 {target_user_name}。"
-    return ""

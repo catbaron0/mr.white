@@ -18,5 +18,9 @@ def load_voices_config() -> dict:
     return load_config(CONFIG_PATH / "voices.json")
 
 
-if __name__ == "__main__":
-    print(load_voices_config())
+def load_emoji_dict() -> dict:
+    return load_config(CONFIG_PATH / "emoji.json")
+
+
+def load_custom_emoji_dict(guild_id: str) -> dict:
+    return load_config(CONFIG_PATH / "custom_emoji.json").get(guild_id, {})
