@@ -41,4 +41,4 @@ async def main():
 if __name__ == '__main__':
     discord_token = sys.argv[1]
     asyncio.run(main())
-    bot.run(discord_token)
+    bot.run(discord_token, reconnect=True)

@@ -133,3 +133,4 @@ config.ini
 session
 config/username.json
 config/voices.json
+log

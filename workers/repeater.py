@@ -6,7 +6,8 @@ import discord
 from discord import FFmpegOpusAudio, Message, User, Member, Reaction
 from discord.ext import commands
 
-from utils.open_ai import tts_f
+from utils.open_ai import gpt_tts_f
+from utils.tts import tts_f
 from utils.text_processing import process_content, process_user_name, translate_emoji
 from config import config
 
@@ -65,31 +66,34 @@ class Repeater:
 
     async def messages_to_audio(self):
         while True:
-            if self.message_queue.empty():
-                await asyncio.sleep(0.1)
-                continue
             msg_type, user_id, user_name, content = await self.message_queue.get()
             text = self.generate_script(msg_type, user_name, content)
             if not text:
                 continue
-            print("DEBUG text:", text)
+            print("DEBUG tts text:", text)
             voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
             voice = voice_cfg["voice"]
             ins = voice_cfg.get("ins", "沉稳的")
             speed = voice_cfg.get("speed", 4.0)
             # 生成音频文件
-            audio_f = tts_f(text, voice, ins, speed)
+            try:
+                audio_f = gpt_tts_f(text, voice, ins, speed)
+            except Exception as e:
+                print("DEBUG tts err:", e)
+                audio_f = tts_f(text)
+            if audio_f is None:
+                print("DEBUG tts error:", text)
+                continue
             await self.audio_queue.put(audio_f)
             print("DEBUG tts:", audio_f)
 
     async def read_messages(self):
         while True:
-            if self.vc.is_playing() or self.audio_queue.empty():
-                await asyncio.sleep(0.1)
-                continue
-            while self.vc.is_playing():
-                await asyncio.sleep(0.1)
             audio_f = await self.audio_queue.get()
+            while self.vc.is_playing():
+                print("DEBUG waiting for finish playing:", audio_f)
+                await asyncio.sleep(0.5)
+            print("DEBUG play audio_f:", audio_f)
             options = '-vn -acodec libopus'
             source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
             print("DEBUG play:", audio_f)
@@ -112,7 +116,7 @@ class Repeater:
     async def append_message(self, message: Message):
         if message.channel.id != self.channel.id:
             return
-        print(message)
+        print("DEBUG append message:", message)
         msg_type = "text"
         user_name = self.get_user_name(message.author)
         user_id = str(message.author.id)
@@ -138,11 +142,21 @@ class Repeater:
         print("DEBUG reaction:", reaction.emoji)
         await self.message_queue.put(("reaction", user_id, user_name, [target_user_name, reaction.emoji]))
 
+    async def get_members(self):
+        """获取当前语音频道的所有成员"""
+        if self.channel and self.channel.guild:
+            return [member for member in self.channel.members if not member.bot]
+        return []
+
 
 class RepeaterManager(commands.Cog):
     def __init__(self, bot):
         self.repeaters = {}
         self.bot = bot
+
+    async def restart_repeat(self, ctx):
+        await self.stop_repeat(ctx)
+        await self.start_repeat(ctx)
 
     async def start_repeat(self, ctx):
         try:
@@ -156,6 +170,7 @@ class RepeaterManager(commands.Cog):
 
         if guild.id in self.repeaters:
             # The bot is working
+            self.repeaters[guild.id].channel.disconnect()
             await ctx.message.reply(f"❌...复读模块繁忙: {channel.name}")
 
         else:
@@ -166,13 +181,16 @@ class RepeaterManager(commands.Cog):
                 f"✅...复读模块就位: {channel.name}"
             )
 
-    async def stop_repeat(self, ctx):
-        guild_id = ctx.guild.id
+    async def _stop_repeat(self, guild_id):
         if guild_id in self.repeaters:
             vc = self.repeaters[guild_id].vc
             if vc and vc.is_connected():
                 await vc.disconnect()
             del self.repeaters[guild_id]
+
+    async def stop_repeat(self, ctx):
+        guild_id = ctx.guild.id
+        await self._stop_repeat(guild_id)
 
     async def update_config(self, ctx):
         guild_id = ctx.guild.id
@@ -188,6 +206,8 @@ class RepeaterManager(commands.Cog):
             await self.start_repeat(ctx)
         if args and args[0] == "stop":
             await self.stop_repeat(ctx)
+        if args and args[0] == "restart":
+            await self.restart_repeat(ctx)
         if args and args[0] == "cfg":
             await self.update_config(ctx)
 
@@ -219,12 +239,19 @@ class RepeaterManager(commands.Cog):
             return
 
         if before.channel is not None:
-            # 用户加入语音频道
+            # 用户离开语音频道
             guild_id = before.channel.guild.id
             msg_type = "exit"
             if guild_id in self.repeaters:
+                member_count = len(before.channel.members)
+                print(f"DEBUG member exit, {member_count} members left")
+                if member_count == 1:
+                    # 如果是最后一个人离开，清理语音频道
+                    print("DEBUG last member exit, disconnecting channel")
+                    await self._stop_repeat(guild_id)
+                    return
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
-
+                
         if after.channel is not None:
             # 用户加入语音频道
             msg_type = "enter"
