@@ -6,10 +6,13 @@ import discord
 from discord import FFmpegOpusAudio, Message, User, Member, Reaction
 from discord.ext import commands
 
-from utils.open_ai import gpt_tts_f
+# from utils.open_ai import gpt_tts_f
 from utils.tts import tts_f
-from utils.text_processing import process_content, process_user_name, translate_emoji
+from utils.text_processing import process_content, process_user_name
+# from utils.text_processing import  translate_emoji
 from config import config
+
+AUDIO_ENTER = Path(__file__).parent.parent / "data" / "kita.mp3"
 
 
 class Repeater:
@@ -58,7 +61,7 @@ class Repeater:
 
         if msg_type == "reaction" and isinstance(content, list):
             target_user_name, emoji = content
-            emoji = translate_emoji(emoji, self.emoji_dict, self.custom_emoji_dict)
+            # emoji = translate_emoji(emoji, self.emoji_dict, self.custom_emoji_dict)
             if not emoji:
                 emoji = "表情包"
             return f"{user_name} 用 {emoji} 回应了 {target_user_name}。"
@@ -71,43 +74,66 @@ class Repeater:
             if not text:
                 continue
             print("DEBUG tts text:", text)
-            voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
-            voice = voice_cfg["voice"]
-            ins = voice_cfg.get("ins", "沉稳的")
-            speed = voice_cfg.get("speed", 4.0)
             # 生成音频文件
-            try:
-                audio_f = gpt_tts_f(text, voice, ins, speed)
-            except Exception as e:
-                print("DEBUG tts err:", e)
-                audio_f = tts_f(text)
+            # try:
+            # voice = voice_cfg["voice"]
+            # ins = voice_cfg.get("ins", "沉稳的")
+            # speed = voice_cfg.get("speed", 4.0)
+            # voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
+            #     audio_f = gpt_tts_f(text, voice, ins, speed)
+            # except Exception as e:
+            # print("DEBUG tts err:", e)
+            audio_f = tts_f(text)
             if audio_f is None:
                 print("DEBUG tts error:", text)
                 continue
             await self.audio_queue.put(audio_f)
             print("DEBUG tts:", audio_f)
 
+    async def play_audio(self, audio_f, cleanup=True):
+        if not self.vc or not self.vc.is_connected():
+            print("DEBUG voice client not connected")
+            return
+        while self.vc.is_playing():
+            print("DEBUG waiting for finish playing:", audio_f)
+            await asyncio.sleep(0.5)
+        print("DEBUG play audio_f:", audio_f)
+        options = '-vn -acodec libopus'
+        source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
+        print("DEBUG play:", audio_f)
+        try:
+            self.vc.play(
+                source,
+                after=lambda e: asyncio.run_coroutine_threadsafe(
+                    self.cleanup(audio_f if cleanup else None),
+                    self.loop
+                )
+            )
+        except discord.errors.ClientException as e:
+            print("DEBUG play err:", e)
+
     async def read_messages(self):
         while True:
             audio_f = await self.audio_queue.get()
-            while self.vc.is_playing():
-                print("DEBUG waiting for finish playing:", audio_f)
-                await asyncio.sleep(0.5)
-            print("DEBUG play audio_f:", audio_f)
-            options = '-vn -acodec libopus'
-            source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
-            print("DEBUG play:", audio_f)
-            try:
-                self.vc.play(
-                    source,
-                    after=lambda e: asyncio.run_coroutine_threadsafe(
-                        self.cleanup(audio_f),
-                        self.loop
-                    )
-                )
-            except discord.errors.ClientException as e:
-                print("DEBUG play err:", e)
-    
+            await self.play_audio(audio_f)
+            # while self.vc.is_playing():
+            #     print("DEBUG waiting for finish playing:", audio_f)
+            #     await asyncio.sleep(0.5)
+            # print("DEBUG play audio_f:", audio_f)
+            # options = '-vn -acodec libopus'
+            # source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
+            # print("DEBUG play:", audio_f)
+            # try:
+            #     self.vc.play(
+            #         source,
+            #         after=lambda e: asyncio.run_coroutine_threadsafe(
+            #             self.cleanup(audio_f),
+            #             self.loop
+            #         )
+            #     )
+            # except discord.errors.ClientException as e:
+            #     print("DEBUG play err:", e)
+
     async def cleanup(self, audio_f):
         await asyncio.sleep(1)
         if Path(audio_f).exists():
@@ -176,6 +202,7 @@ class RepeaterManager(commands.Cog):
         else:
             await channel.connect()
             self.repeaters[guild.id] = Repeater(ctx.guild, channel)
+            await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
             await ctx.message.reply(
                 "✅...语音频道活跃测试...\n"
                 f"✅...复读模块就位: {channel.name}"
@@ -242,22 +269,24 @@ class RepeaterManager(commands.Cog):
             # 用户离开语音频道
             guild_id = before.channel.guild.id
             msg_type = "exit"
-            if guild_id in self.repeaters:
+            if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].channel.id:
                 member_count = len(before.channel.members)
                 print(f"DEBUG member exit, {member_count} members left")
-                if member_count == 1:
-                    # 如果是最后一个人离开，清理语音频道
-                    print("DEBUG last member exit, disconnecting channel")
-                    await self._stop_repeat(guild_id)
-                    return
+                # 过滤掉机器人，只统计人类成员
+            non_bot_members = [m for m in before.channel.members if not m.bot]
+            if len(non_bot_members) == 0:
+                # 频道中已经没有人类用户了
+                print("DEBUG no human members left, disconnecting channel")
+                await self._stop_repeat(guild_id)
+            else:
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
-                
+
         if after.channel is not None:
             # 用户加入语音频道
             msg_type = "enter"
             guild_id = after.channel.guild.id
             print("DEBUG avatar on_enter:", member.display_avatar)
-            if guild_id in self.repeaters:
+            if guild_id in self.repeaters and after.channel.id == self.repeaters[guild_id].channel.id:
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, after.channel, msg_type)
 
     @commands.Cog.listener()
