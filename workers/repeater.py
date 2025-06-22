@@ -10,9 +10,11 @@ from discord.ext import commands
 from utils.tts import tts_f
 from utils.text_processing import process_content, process_user_name
 # from utils.text_processing import  translate_emoji
+from utils.text_processing import get_custom_emoji
 from config import config
 
 AUDIO_ENTER = Path(__file__).parent.parent / "data" / "kita.mp3"
+IMG_ENTER = Path(__file__).parent.parent / "data" / "kita.png"
 
 
 class Repeater:
@@ -61,7 +63,7 @@ class Repeater:
 
         if msg_type == "reaction" and isinstance(content, list):
             target_user_name, emoji = content
-            # emoji = translate_emoji(emoji, self.emoji_dict, self.custom_emoji_dict)
+            emoji = get_custom_emoji(emoji, self.custom_emoji_dict)
             if not emoji:
                 emoji = "表情包"
             return f"{user_name} 用 {emoji} 回应了 {target_user_name}。"
@@ -200,13 +202,16 @@ class RepeaterManager(commands.Cog):
             await ctx.message.reply(f"❌...复读模块繁忙: {channel.name}")
 
         else:
-            await channel.connect()
-            self.repeaters[guild.id] = Repeater(ctx.guild, channel)
-            await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
             await ctx.message.reply(
                 "✅...语音频道活跃测试...\n"
+            )
+            await channel.connect()
+            self.repeaters[guild.id] = Repeater(ctx.guild, channel)
+            await ctx.message.reply(
                 f"✅...复读模块就位: {channel.name}"
             )
+            await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
+            await self.repeaters[guild.id].channel.send(file=discord.File(IMG_ENTER))
 
     async def _stop_repeat(self, guild_id):
         if guild_id in self.repeaters:
@@ -279,7 +284,8 @@ class RepeaterManager(commands.Cog):
                 print("DEBUG no human members left, disconnecting channel")
                 await self._stop_repeat(guild_id)
             else:
-                await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
+                if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].channel.id:
+                    await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
 
         if after.channel is not None:
             # 用户加入语音频道
