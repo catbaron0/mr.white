@@ -107,7 +107,7 @@ class Repeater:
             self.vc.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(
-                    self.cleanup(audio_f if cleanup else None),
+                    self._cleanup_audio_file(audio_f if cleanup else None),
                     self.loop
                 )
             )
@@ -118,25 +118,8 @@ class Repeater:
         while True:
             audio_f = await self.audio_queue.get()
             await self.play_audio(audio_f)
-            # while self.vc.is_playing():
-            #     print("DEBUG waiting for finish playing:", audio_f)
-            #     await asyncio.sleep(0.5)
-            # print("DEBUG play audio_f:", audio_f)
-            # options = '-vn -acodec libopus'
-            # source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
-            # print("DEBUG play:", audio_f)
-            # try:
-            #     self.vc.play(
-            #         source,
-            #         after=lambda e: asyncio.run_coroutine_threadsafe(
-            #             self.cleanup(audio_f),
-            #             self.loop
-            #         )
-            #     )
-            # except discord.errors.ClientException as e:
-            #     print("DEBUG play err:", e)
 
-    async def cleanup(self, audio_f):
+    async def _cleanup_audio_file(self, audio_f):
         await asyncio.sleep(1)
         if Path(audio_f).exists():
             os.remove(audio_f)
@@ -180,6 +163,7 @@ class Repeater:
 class RepeaterManager(commands.Cog):
     def __init__(self, bot):
         self.repeaters = {}
+        self.stop_locks = {}  # NEW: 防止并发 stop
         self.bot = bot
 
     async def restart_repeat(self, ctx):
@@ -211,14 +195,26 @@ class RepeaterManager(commands.Cog):
                 f"✅...复读模块就位: {channel.name}"
             )
             await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
-            await self.repeaters[guild.id].channel.send(file=discord.File(IMG_ENTER))
+            # await self.repeaters[guild.id].channel.send(file=discord.File(IMG_ENTER))
 
     async def _stop_repeat(self, guild_id):
-        if guild_id in self.repeaters:
-            vc = self.repeaters[guild_id].vc
+        if guild_id not in self.stop_locks:
+            self.stop_locks[guild_id] = asyncio.Lock()
+
+        async with self.stop_locks[guild_id]:
+            repeater = self.repeaters.get(guild_id)
+            if not repeater:
+                print(f"DEBUG repeater already stopped for guild {guild_id}")
+                return
+
+            vc = repeater.vc
             if vc and vc.is_connected():
                 await vc.disconnect()
+
+            print(f"DEBUG stop repeat for guild {guild_id}")
             del self.repeaters[guild_id]
+
+        del self.stop_locks[guild_id]
 
     async def stop_repeat(self, ctx):
         guild_id = ctx.guild.id
