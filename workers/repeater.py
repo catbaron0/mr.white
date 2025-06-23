@@ -195,7 +195,7 @@ class RepeaterManager(commands.Cog):
                 f"✅...复读模块就位: {channel.name}"
             )
             await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
-            # await self.repeaters[guild.id].channel.send(file=discord.File(IMG_ENTER))
+            await self.repeaters[guild.id].channel.send(file=discord.File(IMG_ENTER))
 
     async def _stop_repeat(self, guild_id):
         if guild_id not in self.stop_locks:

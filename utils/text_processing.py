@@ -30,12 +30,12 @@ def process_content(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str
 def get_custom_emoji(emoji, custom_emoji_dict) -> str:
     if isinstance(emoji, str):
         return emoji
-    return custom_emoji_dict.get(emoji.name, emoji)
+    return custom_emoji_dict.get(emoji.name, "一个表情")
 
 
 def translate_emoji(emoji: str, emoji_dict: dict, custom_emoji_dict) -> str:
     if isinstance(emoji, Emoji) or isinstance(emoji, PartialEmoji):
-        get_custom_emoji(emoji, custom_emoji_dict)
+        return get_custom_emoji(emoji, custom_emoji_dict)
     return emoji_dict.get(emoji, " emoji ")
 
 
