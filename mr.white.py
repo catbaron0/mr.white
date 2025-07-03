@@ -1,4 +1,6 @@
 import sys
+import re
+import random
 import discord
 from discord.ext import commands
 import asyncio
@@ -7,7 +9,7 @@ from workers.cmd import TranslateCMD
 from workers.repeater import RepeaterManager
 
 intents = discord.Intents.default()
-intents.message_content = True  # 启用消息内容意图
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="-", intents=intents)
 
@@ -18,6 +20,24 @@ repeater_manager = RepeaterManager(bot)
 @bot.command(name="rp")
 async def repeater(ctx, args):
     await repeater_manager.run(ctx, args)
+
+
+@bot.command(name="r")
+async def dice(ctx, args):
+    if args.startswith("d"):
+        args = "1" + args
+    pattern = r'^\d+d\d+$'
+    if not re.match(pattern, args):
+        return
+    d1, d2 = map(int, args.split('d'))
+    if d1 <= 0 or d2 <= 0:
+        return
+    results = []
+    for _ in range(d1):
+        result = random.randint(1, d2)
+        results.append(str(result))
+    result_str = ', '.join(results)
+    await ctx.message.reply(result_str)
 
 
 @bot.command(name="white")
