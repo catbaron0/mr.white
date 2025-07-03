@@ -263,6 +263,28 @@ class RepeaterManager(commands.Cog):
         """监听用户语音状态变化"""
         print(member, before, after)
 
+        # 检查机器人自己是否被移出语音频道
+        if member.id == self.bot.user.id:
+            guild_id = None
+            if before.channel:
+                guild_id = before.channel.guild.id
+            elif after.channel:
+                guild_id = after.channel.guild.id
+            else:
+                guild_id = None
+            if guild_id in self.repeaters:
+                repeater = self.repeaters[guild_id]
+                # 如果after.channel为None，说明bot被移出频道
+                if before.channel and after.channel is None:
+                    print("DEBUG bot was removed from voice channel, try to reconnect")
+                    try:
+                        await before.channel.connect()
+                        repeater.vc = before.channel.guild.voice_client
+                        print("DEBUG bot reconnected to voice channel")
+                    except Exception as e:
+                        print(f"DEBUG failed to reconnect bot: {e}")
+            return
+
         if before.channel and after.channel and before.channel.id == after.channel.id:
             return
 
