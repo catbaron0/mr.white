@@ -8,8 +8,7 @@ from discord.ext import commands
 
 # from utils.open_ai import gpt_tts_f
 from utils.tts import tts_f
-from utils.text_processing import process_content, process_user_name
-# from utils.text_processing import  translate_emoji
+from utils.text_processing import process_content
 from utils.text_processing import get_custom_emoji
 from config import config
 
@@ -41,7 +40,6 @@ class Repeater:
         return self.user_name_config.get(str(user_id), user_name)
 
     def generate_script(self, msg_type: str, user_name: str, content: str | list[str]) -> str:
-        user_name = process_user_name(user_name)
         if isinstance(content, str):
             content = process_content(content, self.emoji_dict, self.custom_emoji_dict)
 
@@ -71,7 +69,7 @@ class Repeater:
 
     async def messages_to_audio(self):
         while True:
-            msg_type, user_id, user_name, content = await self.message_queue.get()
+            msg_type, _, user_name, content = await self.message_queue.get()
             text = self.generate_script(msg_type, user_name, content)
             if not text:
                 continue
