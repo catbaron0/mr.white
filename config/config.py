@@ -14,6 +14,10 @@ def load_username_config() -> dict:
     return load_config(CONFIG_PATH / "username.json")
 
 
+def load_trans_channel() -> dict:
+    return load_config(CONFIG_PATH / "translate_channel.json")
+
+
 def load_voices_config() -> dict:
     return load_config(CONFIG_PATH / "voices.json")
 
