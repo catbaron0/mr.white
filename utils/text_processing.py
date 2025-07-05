@@ -2,8 +2,7 @@ import re
 from pathlib import Path
 from functools import partial
 
-
-from  discord import Emoji, PartialEmoji
+from discord import Emoji, PartialEmoji
 
 
 CONFIG_PATH = Path(__file__).parent
@@ -24,6 +23,7 @@ def process_content(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str
     text = re.sub("@\d+", "那个谁", text)
     text = process_emoji(text, emoji_dict, custom_emoji_dict)
     text = replace_links(text)
+    text = number_to_chinese(text)
     return text
 
 
@@ -41,7 +41,7 @@ def translate_emoji(emoji: str, emoji_dict: dict, custom_emoji_dict) -> str:
 
 def _replace_emoji(match, emoji_dict: dict):
     emoji_name = match.group(1)
-    return emoji_dict.get(emoji_name, "一个表情") 
+    return emoji_dict.get(emoji_name, "一个表情")
 
 
 def process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
@@ -55,15 +55,17 @@ def process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
     return text
 
 
-def process_user_name(text: str) -> str:
-    return text.replace(
-        "𝓈𝒾𝓇𝒾𝓈", "siris"
-    ).replace(
-        "𝚃𝙴𝙽𝚒", "teni"
-    ).replace(
-        "𝕃𝕖𝕥𝕠", "leto"
-    ).replace(
-        "ꩇׁׅ݊ᨵׁׅյׁׅᨵׁׅ ", "mojo"
-    ).replace(
-        "𝘣𝘭𝘶𝘦𝘺", "bluey"
-    )
+def number_to_chinese(text: str) -> str:
+    """
+    匹配文本中的数字（整数和小数），将每一位数字转换为汉字，小数点转换为「点」。
+    例：123.45 -> 一二三点四五
+    """
+    num_map = {
+        '0': '零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
+        '6': '六', '7': '七', '8': '八', '9': '九', '.': '点'
+    }
+
+    def repl(match):
+        return ''.join(num_map.get(ch, ch) for ch in match.group(0))
+    # 匹配整数和小数
+    return re.sub(r'\d+\.\d+|\d+', repl, text)
