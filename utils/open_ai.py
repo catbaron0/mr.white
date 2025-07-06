@@ -32,7 +32,7 @@ async def gpt_chat(prompt: str) -> str:
     """
     try:
         response = await a_client.chat.completions.create(
-            model="gpt-4.1-nano-2025-04-14",
+            model="gpt-4.1-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1024,
             temperature=0.7,

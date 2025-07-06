@@ -29,21 +29,17 @@ class Translator:
         return res
 
     async def auto_translate(self, message):
-        channel_id = message.channel.id
-        text = message.content.strip()
-        author_id = message.author.id
-        author_is_bot = message.author.bot
-
+        channel_id = str(message.channel.id)
+        author_id = str(message.author.id)
         if channel_id not in self.auto_trans_channel:
-            logger.info(f"skip channel: {channel_id}")
-            return  # 忽略非自动翻译频道的消息
+            return
+        if author_id not in self.auto_trans_channel[channel_id]["author_id"]:
+            return
+
+        text = message.content.strip()
         if not text:
             logger.info("skip empty message")
             return  # 忽略空消息
-        if author_is_bot and author_id not in self.auto_trans_channel[channel_id]["allow_bots"]:
-            logger.info(f"skip bot message: {author_id} in channel {channel_id}")
-            return  # 忽略机器人消息
-
         res = await gpt_translate_to_zh(text)
         if res != text:
             try:
