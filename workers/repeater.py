@@ -122,6 +122,14 @@ class Repeater:
         await asyncio.sleep(1)
         if Path(audio_f).exists():
             os.remove(audio_f)
+    
+    def is_muted(self, user_id: str) -> bool:
+        """
+        检查用户是否被静音
+        :param user_id: 用户ID
+        :return: 如果用户被静音返回True，否则返回False
+        """
+        return str(user_id) in self.muted_users or "all" in self.muted_users
 
     async def append_message(self, message: Message):
         if message.channel.id != self.channel.id:
@@ -130,10 +138,9 @@ class Repeater:
         msg_type = "text"
         user_name = self.get_user_name(message.author)
         user_id = str(message.author.id)
-        print("DEBUG user_name:", user_name, "user_id:", user_id)
-        print("DEBUG muted users:", self.muted_users)
-        if str(user_id) in self.muted_users or "all" in self.muted_users:
+        if self.is_muted(user_id):
             # ignore muted users
+            print("DEBUG user is muted:", user_name, user_id)
             return
         content = message.content.strip()
         if content.startswith("#") or content.startswith("#") or content.startswith("-"):
@@ -154,6 +161,10 @@ class Repeater:
 
     async def append_reaction_add(self, reaction: Reaction, user: Member | User):
         if reaction.message.channel.id != self.channel.id:
+            return
+        if self.is_muted(str(user.id)):
+            # ignore muted users
+            print("DEBUG user is muted:", user.display_name, user.id)
             return
         user_name = self.get_user_name(user)
         target_user_name = self.get_user_name(reaction.message.author)
@@ -298,7 +309,6 @@ class RepeaterManager(commands.Cog):
         if guild_id in self.repeaters:
             print("DEBUG message:", message.content)
             await self.repeaters[guild_id].append_message(message)
-
 
     @commands.Cog.listener()
     async def on_message(self, message):
