@@ -25,6 +25,7 @@ class Repeater:
         self.vc = guild.voice_client
         self.load_config()
         self.loop = asyncio.get_running_loop()
+        self.muted_users = set()
         asyncio.create_task(self.messages_to_audio())
         asyncio.create_task(self.read_messages())
 
@@ -129,10 +130,19 @@ class Repeater:
         msg_type = "text"
         user_name = self.get_user_name(message.author)
         user_id = str(message.author.id)
-        content = message.content
+        print("DEBUG user_name:", user_name, "user_id:", user_id)
+        print("DEBUG muted users:", self.muted_users)
+        if str(user_id) in self.muted_users or "all" in self.muted_users:
+            # ignore muted users
+            return
+        content = message.content.strip()
+        if content.startswith("#") or content.startswith("#") or content.startswith("-"):
+            print("DEBUG ignore command message:", content)
+            return
         if message.stickers:
             content = str(len(message.stickers))
             msg_type = "sticker"
+        print("DEBUG append content:", content)
         await self.message_queue.put((msg_type, user_id, user_name, content))
 
     async def append_member_enter_exit_channel(self, member: Member, channel, msg_type: str):
@@ -227,6 +237,35 @@ class RepeaterManager(commands.Cog):
         except Exception as e:
             await ctx.message.reply(f"❌...配置文件更新失败: {e}")
 
+    async def mute(self, ctx, args):
+        guild_id = ctx.guild.id
+        user_id = str(ctx.message.author.id)
+        if len(args) > 1:
+            user_id = str(args[1])
+        try:
+            self.repeaters[guild_id].muted_users.add(user_id)
+            await ctx.message.reply("✅...用户已静音")
+            print(self.repeaters[guild_id].muted_users)
+        except Exception as e:
+            await ctx.message.reply("❌...静音失败")
+            print("DEBUG mute error:", e)
+
+    async def unmute(self, ctx, args):
+        guild_id = ctx.guild.id
+        user_id = str(ctx.message.author.id)
+        if len(args) > 1:
+            user_id = str(args[1])
+        try:
+            if user_id == "all":
+                self.repeaters[guild_id].muted_users = {}
+            else:
+                self.repeaters[guild_id].muted_users.remove(user_id)
+            print(self.repeaters[guild_id].muted_users)
+            await ctx.message.reply("✅...用户已取消静音")
+        except Exception as e:
+            await ctx.message.reply("❌...取消静音失败")
+            print("DEBUG unmute error:", e)
+
     async def run(self, ctx, *args):
         if args and args[0] == "start":
             await self.start_repeat(ctx)
@@ -236,6 +275,30 @@ class RepeaterManager(commands.Cog):
             await self.restart_repeat(ctx)
         if args and args[0] == "cfg":
             await self.update_config(ctx)
+        if args and args[0] == "mute":
+            await self.mute(ctx, args)
+        if args and args[0] == "unmute":
+            await self.unmute(ctx, args)
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            # Ignore bot messages
+            return
+        try:
+            print("DEBUG avatar on message:", message.author.display_name)
+            print("DEBUG avatar on message:", message.author.display_avatar)
+        except Exception as e:
+            print("DEBUG avatar err:", e)
+        if not message.guild:
+            # Not belong to a server
+            return
+        print("DEBUG guild:", message.guild)
+        guild_id = message.guild.id
+        if guild_id in self.repeaters:
+            print("DEBUG message:", message.content)
+            await self.repeaters[guild_id].append_message(message)
+
 
     @commands.Cog.listener()
     async def on_message(self, message):

@@ -19,11 +19,13 @@ def replace_links(text):
 def process_content(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
     print("DEBUG process emoji:", text)
     text = str(text)
+    text = re.sub(r"\|\|.*?\|\|", "", text)
 
     text = re.sub("@\d+", "那个谁", text)
     text = process_emoji(text, emoji_dict, custom_emoji_dict)
     text = replace_links(text)
     text = number_to_chinese(text)
+
     return text
 
 
