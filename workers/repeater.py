@@ -122,7 +122,7 @@ class Repeater:
         await asyncio.sleep(1)
         if Path(audio_f).exists():
             os.remove(audio_f)
-    
+
     def is_muted(self, user_id: str) -> bool:
         """
         检查用户是否被静音
@@ -162,10 +162,10 @@ class Repeater:
     async def append_reaction_add(self, reaction: Reaction, user: Member | User):
         if reaction.message.channel.id != self.channel.id:
             return
-        if self.is_muted(str(user.id)):
-            # ignore muted users
-            print("DEBUG user is muted:", user.display_name, user.id)
-            return
+        # if self.is_muted(str(user.id)):
+        #     # ignore muted users
+        #     print("DEBUG user is muted:", user.display_name, user.id)
+        #     return
         user_name = self.get_user_name(user)
         target_user_name = self.get_user_name(reaction.message.author)
         user_id = str(user.id)
@@ -290,25 +290,6 @@ class RepeaterManager(commands.Cog):
             await self.mute(ctx, args)
         if args and args[0] == "unmute":
             await self.unmute(ctx, args)
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            # Ignore bot messages
-            return
-        try:
-            print("DEBUG avatar on message:", message.author.display_name)
-            print("DEBUG avatar on message:", message.author.display_avatar)
-        except Exception as e:
-            print("DEBUG avatar err:", e)
-        if not message.guild:
-            # Not belong to a server
-            return
-        print("DEBUG guild:", message.guild)
-        guild_id = message.guild.id
-        if guild_id in self.repeaters:
-            print("DEBUG message:", message.content)
-            await self.repeaters[guild_id].append_message(message)
 
     @commands.Cog.listener()
     async def on_message(self, message):
