@@ -6,15 +6,19 @@ from discord.ext import commands
 import asyncio
 
 from workers.translator import Translator
-from workers.repeater import RepeaterManager
+from workers.repeater_manager import RepeaterManager
+from config.config import load_white_config
+from utils.webhook_msg import process_webhook_start_rp
 
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="-", intents=intents)
+bot = commands.Bot(command_prefix="-", intents=intents, help_command=None)
 
 repeater_manager = RepeaterManager(bot)
 translator = Translator()
+
+CFG = load_white_config()
 
 
 @bot.command(name="rp")
@@ -60,13 +64,24 @@ async def dice(ctx, args):
     await ctx.message.reply(result_str)
 
 
-@bot.command(name="white")
+@bot.command(name="help")
 async def help(ctx):
     help_msg = (
         "-rp start: 开启复读\n"
         "-rp stop: 关闭复读\n"
+        "-rp restart: 重启机器人\n"
+        "-rp mute: 不要复读自己的文字\n"
+        "-rp unmute: 开始复读自己的文字\n"
+        "-tr <文字>: 把<文字>翻译成中文\n\t如果没有参数，则翻译被回复的消息\n"
     )
     await ctx.message.reply(help_msg)
+
+
+@bot.command(name="cfg")
+async def update_cfg(ctx) -> None:
+    global CFG
+    CFG = load_white_config()
+    await ctx.message.reply("更新配置成功！\n")
 
 
 @bot.event
@@ -89,12 +104,39 @@ async def on_message(message):
     if message.content:
         await translator.auto_translate(message)
 
+    if message.webhook_id:
+        await process_webhook_start_rp(message, repeater_manager)
+
     # 忽略机器人自己的消息
     if message.author.bot:
         return
 
     # 让命令系统继续工作（非命令消息也要调用，防止其他自定义命令失效）
     await bot.process_commands(message)
+
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Mute mumbers in the specific voice channel
+
+    # skip if the member joined the same channel
+    if before.channel == after.channel:
+        return
+
+    # mute members when they join the target voice channel
+    if after.channel and after.channel.id in CFG.get("muted_channels", []):
+        try:
+            await member.edit(mute=True)
+            print(f"{member.display_name} 加入频道，已静音")
+        except Exception as e:
+            print(f"静音失败：{member.display_name} - {e}")
+    else:
+        # TODO: dont unmute if the member wasn't muted by this bot
+        try:
+            await member.edit(mute=False)
+            print(f"{member.display_name} 离开频道，已解除静音")
+        except Exception as e:
+            print(f"解除静音失败：{member.display_name} - {e}")
 
 
 async def main():

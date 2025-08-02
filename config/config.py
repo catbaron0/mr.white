@@ -28,3 +28,7 @@ def load_emoji_dict() -> dict:
 
 def load_custom_emoji_dict(guild_id: str) -> dict:
     return load_config(CONFIG_PATH / "custom_emoji.json").get(guild_id, {})
+
+
+def load_white_config() -> dict:
+    return load_config(CONFIG_PATH / "global.json")
