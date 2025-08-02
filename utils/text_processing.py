@@ -4,6 +4,8 @@ from functools import partial
 
 from discord import Emoji, PartialEmoji
 
+from workers.que_msg import QueueMessage
+
 
 CONFIG_PATH = Path(__file__).parent
 
@@ -16,20 +18,37 @@ def replace_links(text):
     return re.sub(url_pattern, "看这个链接", text)
 
 
-def process_content(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
-    print("DEBUG process emoji:", text)
-    text = str(text)
+def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
+    message = que_msg.message
+    if message is None:
+        return ""
+    text = str(message.content)
+
+    # remove hidden style
     text = re.sub(r"\|\|.*?\|\|", "", text)
 
-    text = re.sub("@\d+", "那个谁", text)
-    text = process_emoji(text, emoji_dict, custom_emoji_dict)
+    # get mentions
+    mentions = message.mentions
+    id_to_name = {
+        str(user.id): custom_user.get(str(user.id), user.display_name) for user in mentions
+    }
+
+    def _replacer(match):
+        user_id = match.group(1)
+        return f"{id_to_name.get(user_id, f'那个谁')}"
+    text = re.sub(r"<@!?(?P<id>\d+)>", _replacer, text)
+
+    text = process_emoji(text, default_emoji, custom_emoji)
     text = replace_links(text)
     text = number_to_chinese(text)
 
-    return text
+    if len(text) > 100:
+        return f"{que_msg.user_name}说了很多东西你们自己看吧"
+    else:
+        return f"{que_msg.user_name}说, {text}"
 
 
-def get_custom_emoji(emoji, custom_emoji_dict) -> str:
+def emoji_to_str(emoji, custom_emoji_dict) -> str:
     if isinstance(emoji, str):
         return emoji
     return custom_emoji_dict.get(emoji.name, "一个表情")
@@ -37,7 +56,7 @@ def get_custom_emoji(emoji, custom_emoji_dict) -> str:
 
 def translate_emoji(emoji: str, emoji_dict: dict, custom_emoji_dict) -> str:
     if isinstance(emoji, Emoji) or isinstance(emoji, PartialEmoji):
-        return get_custom_emoji(emoji, custom_emoji_dict)
+        return emoji_to_str(emoji, custom_emoji_dict)
     return emoji_dict.get(emoji, " emoji ")
 
 
