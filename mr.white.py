@@ -41,7 +41,7 @@ async def translate(ctx, *, text=""):
         return
     if text:
         # 如果有参数，则翻译参数内容
-        translated = await translator.translate(" ".join(text))
+        translated = await translator.translate(text)
         if translated:
             await ctx.message.reply(translated)
 
