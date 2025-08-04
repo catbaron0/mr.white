@@ -42,6 +42,13 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
     text = replace_links(text)
     text = number_to_chinese(text)
 
+    image_count = sum(
+        1 for attachment in message.attachments
+        if attachment.content_type and attachment.content_type.startswith("image/")
+    )
+    if image_count > 0:
+        text += f"看这{image_count}张图片"
+
     if len(text) > 100:
         return f"{que_msg.user_name}说了很多东西你们自己看吧"
     else:
