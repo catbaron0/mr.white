@@ -20,7 +20,7 @@ class Translator:
     def load_config(self):
         self.auto_trans_channel = config.load_trans_channel()
 
-    async def translate(self, text: str) -> str:
+    async def translate(self, text: str) -> str | None:
         if not text:
             return  # 忽略空消息
         res = await gpt_translate_to_zh(text)

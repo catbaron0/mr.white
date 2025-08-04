@@ -27,21 +27,21 @@ async def repeater(ctx, args):
 
 
 @bot.command(name="tr")
-async def translate(ctx, args=""):
-    if args == "cfg":
+async def translate(ctx, *, text=""):
+    if text.strip() == "cfg":
         translator.load_config()
         await ctx.message.reply("翻译配置已重新加载。")
         return
-    if not args and ctx.message.reference:
+    if not text and ctx.message.reference:
         # 如果没有参数且是回复消息，则翻译被回复的消息
         replied = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         if replied and replied.content:
             translated = await translator.translate(replied.content)
             await replied.reply(translated)
         return
-    if args:
+    if text:
         # 如果有参数，则翻译参数内容
-        translated = await translator.translate(args)
+        translated = await translator.translate(" ".join(text))
         if translated:
             await ctx.message.reply(translated)
 
