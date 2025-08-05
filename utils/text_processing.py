@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from functools import partial
 
-from discord import Emoji, PartialEmoji
+from discord import Emoji, PartialEmoji, Message
 
 from workers.que_msg import QueueMessage
 
@@ -47,12 +47,18 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
         if attachment.content_type and attachment.content_type.startswith("image/")
     )
     if image_count > 0:
-        text += f"看这{image_count}张图片"
+        text += f"看这{image_count}张图"
+
+    user_name = f"{que_msg.user_name}"
+    if message.reference and message.reference.resolved and isinstance(message.reference.resolved, Message):
+        target_user = message.reference.resolved.author
+        target_username = custom_user.get(str(target_user.id), target_user.display_name)
+        user_name = f"{que_msg.user_name}回复{target_username}"
 
     if len(text) > 100:
-        return f"{que_msg.user_name}说了很多东西你们自己看吧"
+        return f"{user_name}说了很多东西你们自己看吧"
     else:
-        return f"{que_msg.user_name}说, {text}"
+        return f"{user_name}说, {text}"
 
 
 def emoji_to_str(emoji, custom_emoji_dict) -> str:
