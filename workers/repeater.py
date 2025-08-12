@@ -23,6 +23,7 @@ class Repeater:
         self.load_config()
         self.loop = asyncio.get_running_loop()
         self.muted_users = set()
+        self.is_exiting = False
         asyncio.create_task(self.messages_to_audio())
         asyncio.create_task(self.read_messages())
 
