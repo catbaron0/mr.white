@@ -20,7 +20,3 @@ def tts_f(text):
 
     # 返回临时 .mp3 文件的路径
     return temp_mp3_path
-
-
-if __name__ == "__main__":
-    print(tts_f("test"))

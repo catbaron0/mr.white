@@ -1,14 +1,24 @@
 import sys
 import re
 import random
+import asyncio
+import logging
+
 import discord
 from discord.ext import commands
-import asyncio
 
 from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
 from config.config import load_white_config
 from utils.webhook_msg import process_webhook_start_rp
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logging.getLogger("mw.white.py").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
+
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -86,7 +96,7 @@ async def update_cfg(ctx) -> None:
 
 @bot.event
 async def on_ready():
-    print(f'✅ Logged in as {bot.user}')
+    logger.info(f'✅ Logged in as {bot.user}')
 
 
 @bot.event

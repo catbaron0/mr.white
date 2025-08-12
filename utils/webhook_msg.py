@@ -1,8 +1,10 @@
 import re
+import logging
 
 from discord import Message, Member
 
 from workers.repeater_manager import RepeaterManager
+LOG = logging.getLogger(__name__)
 
 
 async def process_webhook_start_rp(message: Message, repeater_manager: RepeaterManager):
@@ -16,8 +18,9 @@ async def process_webhook_start_rp(message: Message, repeater_manager: RepeaterM
     assert isinstance(user, Member)
     guild = message.guild
     try:
+        assert user.voice is not None
         voice_channel = user.voice.channel
     except Exception as e:
-        print(f"DEBUG: {e}")
+        LOG.error(e)
         return
     await repeater_manager.start_repeater(guild, voice_channel, None)

@@ -1,12 +1,14 @@
 import os
 import tempfile
 import httpx
+import logging
 
 from openai import OpenAI, AsyncOpenAI
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 a_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY_TRANSLATE"))
+LOG = logging.getLogger(__name__)
 
 
 def gpt_tts_f(text, voice: str, ins: str, speed: float):
@@ -22,7 +24,7 @@ def gpt_tts_f(text, voice: str, ins: str, speed: float):
         response.stream_to_file(temp_mp3_path.name)
         return temp_mp3_path.name
     except httpx.TimeoutException:
-        print("TTS API 请求超时")
+        LOG.error("TTS API 请求超时")
         return None
 
 
@@ -40,7 +42,7 @@ async def gpt_chat(prompt: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Chat API 请求失败: {e}")
+        LOG.error(f"Chat API 请求失败: {e}")
         return ""
 
 
