@@ -102,7 +102,7 @@ class RepeaterManager(commands.Cog):
             await ctx.message.reply("✅...用户已静音")
         except Exception as e:
             await ctx.message.reply("❌...静音失败")
-            LOG.error("Mute error:", e)
+            LOG.error(f"Mute error: {e}")
 
     async def unmute(self, ctx, args):
         guild_id = ctx.guild.id
@@ -117,10 +117,10 @@ class RepeaterManager(commands.Cog):
             await ctx.message.reply("✅...用户已取消静音")
         except Exception as e:
             await ctx.message.reply("❌...取消静音失败")
-            LOG.error("DEBUG unmute error:", e)
+            LOG.error(f"DEBUG unmute error: {e}")
 
     async def run(self, ctx, *args):
-        LOG.debug("CTX.message:", ctx.message)
+        LOG.debug(f"CTX.message: {ctx.message}")
         if ctx.author.voice:
             voice_channel = ctx.author.voice.channel
         else:
@@ -221,7 +221,7 @@ class RepeaterManager(commands.Cog):
         display_name = ""
         if member.display_name:
             display_name = member.display_name
-        LOG.info(f"avatar on_enter({display_name}):", member.display_avatar)
+        LOG.info(f"avatar on_enter({display_name}): {member.display_avatar}")
 
         if guild_id in self.repeaters and after.channel.id == self.repeaters[guild_id].voice_channel.id:
             await self.repeaters[guild_id].append_member_enter_exit_channel(member, after.channel, msg_type)

@@ -70,7 +70,7 @@ class Repeater:
             text = self.generate_script(que_message)
             if not text:
                 continue
-            LOG.debug("tts text:", text)
+            LOG.debug(f"tts text: {text}")
             # 生成音频文件
             # try:
             # voice = voice_cfg["voice"]
@@ -79,22 +79,22 @@ class Repeater:
             # voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
             #     audio_f = gpt_tts_f(text, voice, ins, speed)
             # except Exception as e:
-            # LOG.error("DEBUG tts err:", e)
+            # LOG.error(f"DEBUG tts err: {e}")
             audio_f = tts_f(text)
             if audio_f is None:
-                LOG.error("tts error:", text)
+                LOG.error(f"tts error: {text}")
                 continue
             await self.audio_queue.put(audio_f)
-            LOG.debug("tts file:", audio_f)
+            LOG.debug(f"tts file: {audio_f}")
 
     async def play_audio(self, audio_f, cleanup=True):
         if not self.vc or not self.vc.is_connected():
             LOG.info("DEBUG voice client not connected")
             return
         while self.vc.is_playing():
-            LOG.debug("DEBUG waiting for finish playing:", audio_f)
+            LOG.debug(f"DEBUG waiting for finish playing: {audio_f}")
             await asyncio.sleep(0.5)
-        LOG.info("DEBUG play audio_f:", audio_f)
+        LOG.info(f"DEBUG play audio_f: {audio_f}")
         options = '-vn -acodec libopus'
         source = FFmpegOpusAudio(audio_f, bitrate=256, before_options="", options=options)
         try:
@@ -106,7 +106,7 @@ class Repeater:
                 )
             )
         except discord.errors.ClientException as e:
-            LOG.error("DEBUG play err:", e)
+            LOG.error(f"DEBUG play err: {e}")
 
     async def read_messages(self):
         while True:
@@ -134,7 +134,7 @@ class Repeater:
         user_id = message.author.id
         if self.is_muted(user_id):
             # ignore muted users
-            LOG.info("DEBUG user is muted:", user_name, user_id)
+            LOG.info(f"DEBUG user is muted: {user_name}({user_id})")
             return
         content = message.content.strip()
         if content.startswith("#") or content.startswith("#") or content.startswith("-"):
@@ -168,7 +168,7 @@ class Repeater:
         user_name = self.get_user_name(user)
         target_user_name = self.get_user_name(reaction.message.author)
         user_id = user.id
-        LOG.info("reaction:", reaction.emoji)
+        LOG.info(f"reaction: {reaction.emoji}")
         await self.message_queue.put(QueueMessage(
             msg_type="reaction",
             message=None,
