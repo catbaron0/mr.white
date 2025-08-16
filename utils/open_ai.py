@@ -33,14 +33,12 @@ async def gpt_chat(prompt: str) -> str:
     异步调用 OpenAI GPT API 进行对话，输入 prompt，返回 response 字符串
     """
     try:
-        response = await a_client.chat.completions.create(
-            model="gpt-5-nano",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1024,
-            temperature=0.7,
+        response = await a_client.responses.create(
+            model="gpt-4.1-mini",
+            input=prompt,
             timeout=10
         )
-        return response.choices[0].message.content.strip()
+        return response.output_text.strip()
     except Exception as e:
         LOG.error(f"Chat API 请求失败: {e}")
         return ""
