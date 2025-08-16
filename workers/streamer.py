@@ -436,7 +436,7 @@ class MusicPlayer:
         await self.next()
         vc = self.guild.voice_client
         if vc and vc.is_connected():
-            await vc.disconnect()
+            await vc.disconnect(force=True)
         self.destroy(self.guild)
 
     async def del_music(self, pos: int):

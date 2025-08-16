@@ -47,6 +47,10 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
         if attachment.content_type and attachment.content_type.startswith("image/")
     )
     if image_count > 0:
+        if image_count == 1:
+            image_count = ""
+        if image_count == 2:
+            image_count = "两"
         text += f"看这{image_count}张图"
 
     user_name = f"{que_msg.user_name}"

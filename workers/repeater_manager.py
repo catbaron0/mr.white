@@ -4,10 +4,12 @@ from pathlib import Path
 import logging
 
 import discord
-from discord import User, Member, Reaction, Message
+from discord import User, Member, Reaction, Message, VoiceRegion
 from discord.ext import commands
+from aiohttp import client_exceptions
 
 from workers.repeater import Repeater
+from utils.connect import connect_voice_channel
 # from utils.open_ai import gpt_tts_f
 
 AUDIO_ENTER = Path(__file__).parent.parent / "data" / "kita.mp3"
@@ -27,32 +29,41 @@ class RepeaterManager(commands.Cog):
         await self.start_repeater(guild, voice_channel, message)
 
     async def start_repeater(self, guild, voice_channel, message: None | Message = None):
-        reply_content = "正在启动...\n"
+        reply_content = "正在启动..."
         reply_msg: Message | None = None
         if message:
             reply_msg = await message.reply(reply_content)
         if not voice_channel:
             if reply_msg:
-                reply_content += "❌...语音频道活跃测试，用户需要加入语音频道"
-                await reply_msg.edit(content=reply_content)
+                reply_content = reply_msg.content + "\n❌...语音频道活跃测试，用户需要加入语音频道"
+                reply_msg = await reply_msg.edit(content=reply_content)
             return
 
+        LOG.info(f"guild.id: {guild.id}")
         if guild.id in self.repeaters or guild.voice_client:
             # The bot is working
             if reply_msg:
-                reply_content += f"❌...复读模块繁忙: {voice_channel.name}"
-                await reply_msg.edit(content=reply_content)
+                reply_content = reply_msg.content + f"\n❌...复读模块繁忙: {voice_channel.name}"
+                reply_msg = await reply_msg.edit(content=reply_content)
             return
 
         if reply_msg:
-            reply_content += "✅...语音频道活跃测试...\n"
-            await reply_msg.edit(content=reply_content)
+            reply_content = reply_msg.content + "\n✅...语音频道活跃测试..."
+            reply_msg = await reply_msg.edit(content=reply_content)
 
-        await voice_channel.connect()
-        self.repeaters[guild.id] = Repeater(guild, voice_channel)
+        vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg)
+        if not vc:
+            vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg, VoiceRegion.hongkong)
+        if not vc:
+            if reply_msg:
+                reply_content = reply_msg.content + "\n❌...语音频道连接失败"
+                reply_msg = await reply_msg.edit(content=reply_content)
+            return
+
+        self.repeaters[guild.id] = Repeater(guild, voice_channel, vc)
         if reply_msg:
-            reply_content += f"✅...复读模块就位: {voice_channel.name}"
-            await reply_msg.edit(content=reply_content)
+            reply_content = reply_msg.content + f"\n✅...复读模块就位: {voice_channel.name}"
+            reply_msg = await reply_msg.edit(content=reply_content)
 
         await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
         await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
@@ -70,7 +81,7 @@ class RepeaterManager(commands.Cog):
 
             vc = repeater.vc
             if vc and vc.is_connected():
-                await vc.disconnect()
+                await vc.disconnect(force=True)
                 await asyncio.sleep(1)
 
             LOG.info(f"Stop repeat for guild {guild_id}")
@@ -190,21 +201,24 @@ class RepeaterManager(commands.Cog):
         if before.channel and after.channel and before.channel.id == after.channel.id:
             return
 
-        if before.channel is not None:
-            guild_id = before.channel.guild.id
-            msg_type = "exit"
-            if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
-                member_count = len(before.channel.members)
-                LOG.info(f"Member exit, {member_count} members left")
-            # count non-bot memebers
-            non_bot_members = [m for m in before.channel.members if not m.bot]
+        if before.channel is None:
+            return
 
-            if len(non_bot_members) == 0:
-                LOG.info("Human members left, disconnecting channel")
-                await self._stop_repeater(guild_id)
-            else:
-                if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
-                    await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
+        guild_id = before.channel.guild.id
+        msg_type = "exit"
+        member_count = len(before.channel.members)
+        non_bot_members_count = sum([1 for m in before.channel.members if not m.bot])
+
+        if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
+            LOG.info(f"{member.display_name} exit, {member_count} members left")
+        # count non-bot memebers
+
+        if non_bot_members_count == 0:
+            LOG.info("Human members left, disconnecting channel")
+            await self._stop_repeater(guild_id)
+        else:
+            if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
+                await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
 
     async def _process_member_entering(self, member, before, after):
         '''

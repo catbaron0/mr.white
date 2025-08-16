@@ -18,12 +18,12 @@ LOG = logging.getLogger(__name__)
 
 
 class Repeater:
-    def __init__(self, guild, voice_channel):
+    def __init__(self, guild, voice_channel, voice_client):
         self.message_queue = asyncio.Queue()
         self.audio_queue = asyncio.Queue()
         self.voice_channel = voice_channel
         self.guild = guild
-        self.vc = guild.voice_client
+        self.vc = voice_client
         self.load_config()
         self.loop = asyncio.get_running_loop()
         self.muted_users = set()

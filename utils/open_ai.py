@@ -34,7 +34,7 @@ async def gpt_chat(prompt: str) -> str:
     """
     try:
         response = await a_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-5-nano",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1024,
             temperature=0.7,
@@ -58,4 +58,16 @@ async def gpt_translate_to_zh(text: str) -> str:
         "原文:\n"
     )
     prompt += text
+    return await gpt_chat(prompt)
+
+
+async def gpt_intro(text: str) -> str:
+    """
+    异步调用 OpenAI GPT API 进行推文翻译，输入 text，返回翻译后的字符串
+    """
+    prompt = (
+        f"什么是 [{text}]。\n"
+        "介绍要适当的简洁易懂\n"
+        "不要提示后续对话\n"
+    )
     return await gpt_chat(prompt)

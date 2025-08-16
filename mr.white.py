@@ -11,6 +11,8 @@ from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
 from config.config import load_white_config
 from utils.webhook_msg import process_webhook_start_rp
+from utils.open_ai import gpt_intro
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,8 +85,21 @@ async def help(ctx):
         "-rp mute: 不要复读自己的文字\n"
         "-rp unmute: 开始复读自己的文字\n"
         "-tr <文字>: 把<文字>翻译成中文\n\t如果没有参数，则翻译被回复的消息\n"
+        "-intro <事物>: 简单介绍<事物>\n"
     )
     await ctx.message.reply(help_msg)
+
+
+@bot.command(name="intro")
+async def intro(ctx, args):
+    if not args:
+        answer = "-intro <事物>: 简单介绍<事物>\n"
+    elif len(args) > 20:
+        answer = "你看看你自己在说什么"
+    else:
+        async with ctx.channel.typing():
+            answer = await gpt_intro(args)
+    await ctx.message.reply(answer)
 
 
 @bot.command(name="cfg")
