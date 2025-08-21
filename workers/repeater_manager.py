@@ -101,6 +101,7 @@ class RepeaterManager(commands.Cog):
             self.repeaters[guild_id].load_config()
             await ctx.message.reply("✅...配置文件已更新")
         except Exception as e:
+            LOG.error(f"❌...配置文件更新失败: {e}")
             await ctx.message.reply(f"❌...配置文件更新失败: {e}")
 
     async def mute(self, ctx, args):

@@ -32,9 +32,13 @@ class Repeater:
         asyncio.create_task(self.read_messages())
 
     def load_config(self):
+        LOG.info("Loading voice_config")
         self.voice_config = config.load_voices_config()
+        LOG.info("Loading custom_user_name")
         self.custom_user_name = config.load_username_config()
+        LOG.info("Loading default_emoji")
         self.default_emoji = config.load_emoji_dict()
+        LOG.info("Loading custom_emoji")
         self.custom_emoji = config.load_custom_emoji_dict(str(self.guild.id))
 
     def get_user_name(self, member: Member | User) -> str:

@@ -51,7 +51,7 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
             image_count = ""
         if image_count == 2:
             image_count = "两"
-        text += f"看这{image_count}张图"
+        text += f"\n看这{image_count}张图"
 
     user_name = f"{que_msg.user_name}"
     if message.reference and message.reference.resolved and isinstance(message.reference.resolved, Message):

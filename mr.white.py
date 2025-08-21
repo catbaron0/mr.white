@@ -141,29 +141,29 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-@bot.event
-async def on_voice_state_update(member, before, after):
-    # Mute mumbers in the specific voice channel
+# @bot.event
+# async def on_voice_state_update(member, before, after):
+#     # Mute mumbers in the specific voice channel
 
-    # skip if the member joined the same channel
-    if before.channel == after.channel and before.self_mute == after.self_mute:
-        return
+#     # skip if the member joined the same channel
+#     if before.channel == after.channel and before.self_mute == after.self_mute:
+#         return
 
-    if after.channel and after.channel.id in CFG.get("muted_channels", []):
-        if not after.self_mute:
-            try:
-                await member.edit(mute=True)
-                print(f"{member.display_name} 加入频道，已静音")
-            except Exception as e:
-                print(f"静音失败：{member.display_name} - {e}")
-    else:
-        # TODO: dont unmute if the member wasn't muted by this bot
-        if before.self_mute:
-            try:
-                await member.edit(mute=False)
-                print(f"{member.display_name} 离开频道，已解除静音")
-            except Exception as e:
-                print(f"解除静音失败：{member.display_name} - {e}")
+#     if after.channel and after.channel.id in CFG.get("muted_channels", []):
+#         if not after.self_mute:
+#             try:
+#                 await member.edit(mute=True)
+#                 print(f"{member.display_name} 加入频道，已静音")
+#             except Exception as e:
+#                 print(f"静音失败：{member.display_name} - {e}")
+#     else:
+#         # TODO: dont unmute if the member wasn't muted by this bot
+#         if before.self_mute:
+#             try:
+#                 await member.edit(mute=False)
+#                 print(f"{member.display_name} 离开频道，已解除静音")
+#             except Exception as e:
+#                 print(f"解除静音失败：{member.display_name} - {e}")
 
 
 async def main():
