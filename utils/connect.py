@@ -29,6 +29,8 @@ async def connect_voice_channel(
     await voice_channel.edit(rtc_region=region)
     try:
         LOG.error("Connecting to voice channel")
+        if voice_channel.guild.voice_client:
+            await voice_channel.guild.voice_client.disconnect()
         vc = await voice_channel.connect(timeout=10, reconnect=True)
         return vc, message
     except Exception as e:

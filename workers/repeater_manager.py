@@ -38,7 +38,7 @@ class RepeaterManager(commands.Cog):
             return
 
         LOG.info(f"guild.id: {guild.id}")
-        if guild.id in self.repeaters or guild.voice_client:
+        if guild.id in self.repeaters and guild.voice_client and guild.voice_client.is_connected():
             # The bot is working
             if reply_msg:
                 reply_content = reply_msg.content + f"\n❌...复读模块繁忙: {voice_channel.name}"
@@ -48,14 +48,25 @@ class RepeaterManager(commands.Cog):
         if reply_msg:
             reply_content = reply_msg.content + "\n✅...语音频道活跃测试..."
             reply_msg = await reply_msg.edit(content=reply_content)
+            reply_content = reply_msg.content + "\n✅...连接语音节点..."
+            reply_msg = await reply_msg.edit(content=reply_content)
 
-        vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg)
-        if not vc:
-            vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg, VoiceRegion.hongkong)
-        if not vc:
+        try:
+            vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg)
+            if not vc:
+                vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg, VoiceRegion.hongkong)
+        except Exception as e:
             if reply_msg:
                 reply_content = reply_msg.content + "\n❌...语音频道连接失败"
                 reply_msg = await reply_msg.edit(content=reply_content)
+            LOG.error(f"Voice channel connection error: {e}")
+            return
+
+        if vc is None or not vc.is_connected():
+            if reply_msg:
+                reply_content = reply_msg.content + "\n❌...语音频道连接失败"
+                reply_msg = await reply_msg.edit(content=reply_content)
+            LOG.error("Voice channel connection failed")
             return
 
         self.repeaters[guild.id] = Repeater(guild, voice_channel, vc)
@@ -79,6 +90,12 @@ class RepeaterManager(commands.Cog):
 
             vc = repeater.vc
             if vc and vc.is_connected():
+                LOG.info(f"Disconnecting vc: {guild_id}")
+                await vc.disconnect(force=True)
+                await asyncio.sleep(1)
+            vc = repeater.guild.voice_client
+            if vc and vc.is_connected():
+                LOG.info(f"Disconnecting voice_client: {guild_id}")
                 await vc.disconnect(force=True)
                 await asyncio.sleep(1)
 

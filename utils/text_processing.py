@@ -65,7 +65,9 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
         return f"{user_name}说, {text}"
 
 
-def emoji_to_str(emoji: Emoji | PartialEmoji | str, default_emoji_dict, custom_emoji_dict) -> str:
+def emoji_to_str(emoji: Emoji | PartialEmoji | str | None, default_emoji_dict, custom_emoji_dict) -> str:
+    if not emoji:
+        return ""
     if isinstance(emoji, str):
         return default_emoji_dict.get(emoji) or custom_emoji_dict.get(emoji, "一个表情")
     return default_emoji_dict.get(emoji.name) or custom_emoji_dict.get(emoji.name, "一个表情")
