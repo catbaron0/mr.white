@@ -6,11 +6,9 @@ import logging
 import discord
 from discord import User, Member, Reaction, Message, VoiceRegion
 from discord.ext import commands
-from aiohttp import client_exceptions
 
 from workers.repeater import Repeater
 from utils.connect import connect_voice_channel
-# from utils.open_ai import gpt_tts_f
 
 AUDIO_ENTER = Path(__file__).parent.parent / "data" / "kita.mp3"
 IMG_ENTER = Path(__file__).parent.parent / "data" / "kita.png"

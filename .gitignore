@@ -131,6 +131,5 @@ play.*
 random.*
 config.ini
 session
-config/username.json
-config/voices.json
 log
+config/guild_config.json

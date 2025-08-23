@@ -6,7 +6,7 @@ import logging
 import discord
 from discord import FFmpegOpusAudio, Message, User, Member, Reaction
 
-# from utils.open_ai import gpt_tts_f
+from utils.open_ai import gpt_tts_f
 from utils.tts import tts_f
 from utils.text_processing import process_text_message
 from utils.text_processing import emoji_to_str
@@ -32,23 +32,24 @@ class Repeater:
         asyncio.create_task(self.read_messages())
 
     def load_config(self):
-        LOG.info("Loading voice_config")
-        self.voice_config = config.load_voices_config()
-        LOG.info("Loading custom_user_name")
-        self.custom_user_name = config.load_username_config()
         LOG.info("Loading default_emoji")
         self.default_emoji = config.load_emoji_dict()
         LOG.info("Loading custom_emoji")
-        self.custom_emoji = config.load_custom_emoji_dict(str(self.guild.id))
+        self.config = config.load_guild_config(str(self.guild.id))
 
     def get_user_name(self, member: Member | User) -> str:
         user_name = member.display_name
         user_id = member.id
-        return self.custom_user_name.get(str(user_id), user_name)
+        return self.config["custom_username"].get(str(user_id), user_name)
 
     def generate_script(self, que_msg: QueueMessage) -> str:
         if que_msg.msg_type == "text":
-            return process_text_message(que_msg, self.default_emoji, self.custom_emoji, self.custom_user_name)
+            return process_text_message(
+                que_msg,
+                self.default_emoji,
+                self.config["custom_emoji"],
+                self.config["custom_username"]
+            )
 
         if que_msg.msg_type == "sticker":
             assert que_msg.message is not None
@@ -62,7 +63,11 @@ class Repeater:
             return f"{que_msg.user_name} 走了。"
 
         if que_msg.msg_type == "reaction":
-            emoji = emoji_to_str(que_msg.reaction_emoji, self.custom_emoji)
+            emoji = emoji_to_str(
+                que_msg.reaction_emoji,
+                self.default_emoji,
+                self.config["custom_emoji"],
+            )
             if not emoji:
                 emoji = "表情包"
             return f"{que_msg.user_name} 用 {emoji} 回应了 {que_msg.reaction_target_user_name}。"
@@ -76,15 +81,21 @@ class Repeater:
                 continue
             LOG.debug(f"tts text: {text}")
             # 生成音频文件
-            # try:
-            # voice = voice_cfg["voice"]
-            # ins = voice_cfg.get("ins", "沉稳的")
-            # speed = voice_cfg.get("speed", 4.0)
-            # voice_cfg = self.voice_config.get(str(user_id), self.voice_config["default"])
-            #     audio_f = gpt_tts_f(text, voice, ins, speed)
-            # except Exception as e:
-            # LOG.error(f"DEBUG tts err: {e}")
-            audio_f = tts_f(text)
+            audio_f = None
+            user_id = que_message.user_id
+            try:
+                if self.config.get("tts_model", "default") == "gpt-tts":
+                    default_voice_config = self.config["voice_config"]["default"]
+                    voice_cfg = self.config["voice_config"].get(
+                        str(user_id),
+                        default_voice_config
+                    )
+                    audio_f = gpt_tts_f(text, voice_cfg)
+                else:
+                    audio_f = tts_f(text)
+            except Exception as e:
+                LOG.error(f"DEBUG tts err: {e}")
+
             if audio_f is None:
                 LOG.error(f"tts error: {text}")
                 continue

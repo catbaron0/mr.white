@@ -65,16 +65,10 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
         return f"{user_name}说, {text}"
 
 
-def emoji_to_str(emoji, custom_emoji_dict) -> str:
+def emoji_to_str(emoji: Emoji | PartialEmoji | str, default_emoji_dict, custom_emoji_dict) -> str:
     if isinstance(emoji, str):
-        return emoji
-    return custom_emoji_dict.get(emoji.name, "一个表情")
-
-
-def translate_emoji(emoji: str, emoji_dict: dict, custom_emoji_dict) -> str:
-    if isinstance(emoji, Emoji) or isinstance(emoji, PartialEmoji):
-        return emoji_to_str(emoji, custom_emoji_dict)
-    return emoji_dict.get(emoji, " emoji ")
+        return default_emoji_dict.get(emoji) or custom_emoji_dict.get(emoji, "一个表情")
+    return default_emoji_dict.get(emoji.name) or custom_emoji_dict.get(emoji.name, "一个表情")
 
 
 def _replace_emoji(match, emoji_dict: dict):

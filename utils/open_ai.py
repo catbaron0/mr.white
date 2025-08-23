@@ -11,7 +11,10 @@ a_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY_TRANSLATE"))
 LOG = logging.getLogger(__name__)
 
 
-def gpt_tts_f(text, voice: str, ins: str, speed: float):
+def gpt_tts_f(text, voice_cfg):
+    voice = voice_cfg["voice"]
+    ins = voice_cfg.get("ins", "沉稳的")
+    speed = voice_cfg.get("speed", 2.0)
     temp_mp3_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     try:
         response = client.audio.speech.create(
