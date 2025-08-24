@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
+from workers.dice import roll_dice
 from config.config import load_white_config
 from utils.webhook_msg import process_webhook_start_rp
 from utils.open_ai import gpt_intro
@@ -59,21 +60,20 @@ async def translate(ctx, *, text=""):
 
 
 @bot.command(name="r")
-async def dice(ctx, args):
-    if args.startswith("d"):
-        args = "1" + args
-    pattern = r'^\d+d\d+$'
-    if not re.match(pattern, args):
-        return
-    d1, d2 = map(int, args.split('d'))
-    if d1 <= 0 or d2 <= 0:
-        return
-    results = []
-    for _ in range(d1):
-        result = random.randint(1, d2)
-        results.append(str(result))
-    result_str = ', '.join(results)
-    await ctx.message.reply(result_str)
+async def dice(ctx, *args):
+    resp = ""
+
+    for i, arg in enumerate(args):
+        results = [str(r) for r in roll_dice(arg)]
+        intro = f"第 {i+1} 次结果"
+        if len(args) == 1:
+            intro = "结果:"
+        if results:
+            result_str = f"{intro}: `" + ", ".join(results) + "`"
+        else:
+            result_str = f"{intro}: 格式错误"
+        resp += result_str + "\n"
+    await ctx.message.reply(resp)
 
 
 @bot.command(name="help")

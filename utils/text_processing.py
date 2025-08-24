@@ -10,12 +10,74 @@ from workers.que_msg import QueueMessage
 CONFIG_PATH = Path(__file__).parent
 
 
-def replace_links(text):
+def _replace_links(text):
     # 正则匹配 URL（支持 http, https, www.）
     if text.startswith("https://tenor.com/view/"):
         return "看我表情"
     url_pattern = r"https?://[^\s]+|www\.[^\s]+"
     return re.sub(url_pattern, "看这个链接", text)
+
+
+def _process_channel_mention(content, guild, emoji_dict) -> str:
+    def repl(match):
+        channel_id = int(match.group(1))
+        channel = guild.get_channel(channel_id)
+        if channel:
+            channel_name = "".join(["" if c in emoji_dict else c for c in channel.name])
+            channel_name = channel_name.strip("-")
+            if channel_name != "":
+                return f"{channel_name}频道"
+        # return match.group(0)  # 找不到频道就保留原样
+        return "这个频道"
+
+    content = re.sub(r"<#(\d+)>", repl, content)
+    return re.sub("频道\s*频道", "频道", content)
+
+
+def _process_user_mention(content, mentions, custom_user) -> str:
+    id_to_name = {
+        str(user.id): custom_user.get(str(user.id), user.display_name) for user in mentions
+    }
+
+    def _replacer(match):
+        user_id = match.group(1)
+        return f"{id_to_name.get(user_id, f'那个谁')}"
+    content = re.sub(r"<@!?(?P<id>\d+)>", _replacer, content)
+    return content
+
+
+def _replace_emoji(match, emoji_dict: dict):
+    emoji_name = match.group(1)
+    return emoji_dict.get(emoji_name, "一个表情")
+
+
+def _process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
+    # process custom emoji
+    text = re.sub(r"<[a-z]?:(.+):\d+>", partial(_replace_emoji, emoji_dict=custom_emoji_dict), text)
+
+    # process emoji
+    pattern = "|".join(map(re.escape, emoji_dict.keys()))
+    text = re.sub(pattern, lambda match: emoji_dict.get(match.group(0), "emoji"), text)
+
+    return text
+
+
+def _number_to_chinese(text: str) -> str:
+    """
+    匹配文本中的数字（整数和小数），将每一位数字转换为汉字，小数点转换为「点」。
+    例：123.45 -> 一二三点四五
+    """
+    num_map = {
+        '0': '零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
+        '6': '六', '7': '七', '8': '八', '9': '九', '.': '点'
+    }
+
+    def repl(match):
+        numbers = [num_map.get(ch, ch) for ch in match.group(0)]
+        numbers = [n for n in numbers if n is not None]
+        return ''.join(numbers)
+    # 匹配整数和小数
+    return re.sub(r'\d+\.\d+|\d+', repl, text)
 
 
 def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
@@ -28,19 +90,15 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
     text = re.sub(r"\|\|.*?\|\|", "", text)
 
     # get mentions
-    mentions = message.mentions
-    id_to_name = {
-        str(user.id): custom_user.get(str(user.id), user.display_name) for user in mentions
-    }
+    text = _process_user_mention(text, message.mentions, custom_user)
 
-    def _replacer(match):
-        user_id = match.group(1)
-        return f"{id_to_name.get(user_id, f'那个谁')}"
-    text = re.sub(r"<@!?(?P<id>\d+)>", _replacer, text)
+    # get channel mentions
+    if message.guild:
+        text = _process_channel_mention(text, message.guild, default_emoji)
 
-    text = process_emoji(text, default_emoji, custom_emoji)
-    text = replace_links(text)
-    text = number_to_chinese(text)
+    text = _process_emoji(text, default_emoji, custom_emoji)
+    text = _replace_links(text)
+    text = _number_to_chinese(text)
 
     image_count = sum(
         1 for attachment in message.attachments
@@ -71,35 +129,3 @@ def emoji_to_str(emoji: Emoji | PartialEmoji | str | None, default_emoji_dict, c
     if isinstance(emoji, str):
         return default_emoji_dict.get(emoji) or custom_emoji_dict.get(emoji, "一个表情")
     return default_emoji_dict.get(emoji.name) or custom_emoji_dict.get(emoji.name, "一个表情")
-
-
-def _replace_emoji(match, emoji_dict: dict):
-    emoji_name = match.group(1)
-    return emoji_dict.get(emoji_name, "一个表情")
-
-
-def process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
-    # process custom emoji
-    text = re.sub(r"<[a-z]?:(.+):\d+>", partial(_replace_emoji, emoji_dict=custom_emoji_dict), text)
-
-    # process emoji
-    pattern = "|".join(map(re.escape, emoji_dict.keys()))
-    text = re.sub(pattern, lambda match: emoji_dict.get(match.group(0), "emoji"), text)
-
-    return text
-
-
-def number_to_chinese(text: str) -> str:
-    """
-    匹配文本中的数字（整数和小数），将每一位数字转换为汉字，小数点转换为「点」。
-    例：123.45 -> 一二三点四五
-    """
-    num_map = {
-        '0': '零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
-        '6': '六', '7': '七', '8': '八', '9': '九', '.': '点'
-    }
-
-    def repl(match):
-        return ''.join(num_map.get(ch, ch) for ch in match.group(0))
-    # 匹配整数和小数
-    return re.sub(r'\d+\.\d+|\d+', repl, text)
