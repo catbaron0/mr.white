@@ -13,6 +13,5 @@ def roll_dice(cmd) -> list[int]:
         return []
     results = []
     for _ in range(d1):
-        result = random.randint(1, d2)
-        results.append(str(result))
+        results.append(random.randint(1, d2))
     return results

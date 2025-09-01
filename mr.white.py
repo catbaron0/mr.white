@@ -1,6 +1,4 @@
 import sys
-import re
-import random
 import asyncio
 import logging
 
@@ -25,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="-", intents=intents, help_command=None)
 
@@ -62,12 +61,18 @@ async def translate(ctx, *, text=""):
 @bot.command(name="r")
 async def dice(ctx, *args):
     resp = ""
+    reason = args[-1] if args else ""
+    if roll_dice(reason) != []:
+        reason = ""
+    else:
+        reason = reason + "检定"
+        args = args[:-1]
 
     for i, arg in enumerate(args):
         results = [str(r) for r in roll_dice(arg)]
-        intro = f"第 {i+1} 次结果"
+        intro = f"{reason}第 {i+1} 次结果"
         if len(args) == 1:
-            intro = "结果:"
+            intro = f"{reason}结果"
         if results:
             result_str = f"{intro}: `" + ", ".join(results) + "`"
         else:

@@ -223,14 +223,16 @@ class RepeaterManager(commands.Cog):
         guild_id = before.channel.guild.id
         msg_type = "exit"
         member_count = len(before.channel.members)
-        non_bot_members_count = sum([1 for m in before.channel.members if not m.bot])
-
-        if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
-            LOG.info(f"{member.display_name} exit, {member_count} members left")
         # count non-bot memebers
+        non_bot_members_count = sum([1 for m in before.channel.members if not m.bot])
+        if guild_id not in self.repeaters:
+            return
 
-        if non_bot_members_count == 0:
-            LOG.info("Human members left, disconnecting channel")
+        if before.channel.id == self.repeaters[guild_id].voice_channel.id:
+            LOG.info(f"{member.display_name} exited, {member_count} members, {non_bot_members_count} non-bot members")
+
+        if non_bot_members_count == 0 and before.channel.id == self.repeaters[guild_id].voice_channel.id:
+            LOG.info(f"{non_bot_members_count} human members left, disconnecting channel")
             await self._stop_repeater(guild_id)
         else:
             if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:

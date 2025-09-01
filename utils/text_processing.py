@@ -111,11 +111,11 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
             image_count = "两"
         text += f"\n看这{image_count}张图"
 
-    user_name = f"{que_msg.user_name}"
+    user_name = custom_user.get(str(que_msg.user.id), que_msg.user.display_name)
     if message.reference and message.reference.resolved and isinstance(message.reference.resolved, Message):
         target_user = message.reference.resolved.author
         target_username = custom_user.get(str(target_user.id), target_user.display_name)
-        user_name = f"{que_msg.user_name}回复{target_username}"
+        user_name = f"{user_name}回复{target_username}"
 
     if len(text) > 100:
         return f"{user_name}说了很多东西你们自己看吧"
