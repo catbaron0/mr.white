@@ -63,9 +63,8 @@ class Repeater:
         if que_msg.msg_type == "enter":
             user = que_msg.user
             LOG.info(f"{display_name} joined.")
-            LOG.info(f"self_muted: {user.voice.self_mute if user and isinstance(user, Member) and user.voice else 'N/A'}")
             if user and isinstance(user, Member) and user.voice and user.voice.self_mute:
-                return f"{display_name} 来了。{display_name} 你麦克风没开。"
+                return f"{display_name} 来了。{display_name} 你麦克风没开。重复，你麦克风没开。"
             return f"{display_name} 来了。"
 
         if que_msg.msg_type == "exit":
@@ -174,7 +173,6 @@ class Repeater:
     async def append_member_enter_exit_channel(self, member: Member, channel, msg_type: str):
         if self.voice_channel.id != channel.id:
             return
-        LOG.info(f"voice_state_update: {member.display_name} {msg_type}ed")
         await self.message_queue.put(QueueMessage(
             msg_type=msg_type,
             message=None,
