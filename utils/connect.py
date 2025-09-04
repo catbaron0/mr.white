@@ -9,7 +9,8 @@ LOG = logging.getLogger(__name__)
 async def connect_voice_channel(
     voice_channel: VoiceChannel,
     message: Message | None,
-    region: VoiceRegion | None = None
+    region: VoiceRegion | None = None,
+    retry: int = 3
 ) -> tuple[VoiceClient | None, Message | None]:
 
     vc: VoiceClient | None = None
@@ -31,7 +32,12 @@ async def connect_voice_channel(
         LOG.error("Connecting to voice channel")
         if voice_channel.guild.voice_client:
             await voice_channel.guild.voice_client.disconnect()
-        vc = await voice_channel.connect(timeout=10, reconnect=True)
+        vc = None
+        for i in range(retry):
+            LOG.info(f"Voice channel connection attempt {i+1}/{retry}")
+            vc = await voice_channel.connect(timeout=10, reconnect=True)
+            if vc and vc.is_connected():
+                break
         return vc, message
     except Exception as e:
         if message:
