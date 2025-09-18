@@ -54,8 +54,8 @@ class RepeaterManager(commands.Cog):
         try:
             vc = None
             vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg)
-            if not vc:
-                vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg, VoiceRegion.hongkong)
+            # if not vc:
+            #     vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg, VoiceRegion.japan)
         except Exception as e:
             if reply_msg:
                 reply_content = reply_msg.content + "\n❌...语音频道连接失败"
