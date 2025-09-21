@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import logging
+import os
 
 import discord
 from discord.ext import commands
@@ -11,6 +12,7 @@ from workers.dice import roll_dice
 from config.config import load_white_config
 from utils.webhook_msg import process_webhook_start_rp
 from utils.open_ai import gpt_intro
+import utils.reboot as rb
 
 
 logging.basicConfig(
@@ -81,6 +83,14 @@ async def dice(ctx, *args):
             result_str = f"{intro}: 格式错误"
         resp += result_str + "\n"
     await ctx.message.reply(resp)
+
+
+@bot.command(name="reboot")
+async def reboot(ctx):
+    await ctx.message.reply("重启中...")
+    rb.restart()
+    await bot.close()
+    sys.exit(0)
 
 
 @bot.command(name="help")
@@ -178,6 +188,6 @@ async def main():
 
 
 if __name__ == '__main__':
-    discord_token = sys.argv[1]
+    discord_token = os.getenv("DISCORD_KEY")
     asyncio.run(main())
     bot.run(discord_token, reconnect=True)

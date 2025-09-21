@@ -25,10 +25,18 @@ async def connect_voice_channel(
 
     if voice_channel.guild.voice_client:
         await voice_channel.guild.voice_client.disconnect()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
+    LOG.info(f"Voice channel connection attempt 0/{retry}")
+    vc = await voice_channel.connect(timeout=10, reconnect=True)
+    if vc and vc.is_connected():
+        LOG.info("Voice channel connected successfully")
+        return vc, message
 
     for i in range(retry):
         try:
+            if voice_channel.guild.voice_client:
+                await voice_channel.guild.voice_client.disconnect()
+                await asyncio.sleep(1.0)
             LOG.info(f"Voice channel connection attempt {i+1}/{retry}")
             vc = await voice_channel.connect(timeout=10, reconnect=True)
             if vc and vc.is_connected():
@@ -41,5 +49,4 @@ async def connect_voice_channel(
     if message:
         reply_content = message.content + "\n❌... 语音连接失败"
         message = await message.edit(content=reply_content)
-    LOG.error(f"语音接失败：{e}")
     return None, message
