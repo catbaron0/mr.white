@@ -154,7 +154,7 @@ async def on_message(message):
         return
 
     # 让命令系统继续工作（非命令消息也要调用，防止其他自定义命令失效）
-    logger.info(f"{message.author.display_name}:{message.content}")
+    logger.info(f"{message.author.display_name}: {message.content}")
     await bot.process_commands(message)
 
 
@@ -184,7 +184,7 @@ async def on_message(message):
 
 
 async def main():
-    bot.add_cog(repeater_manager)
+    await bot.add_cog(repeater_manager)
 
 
 if __name__ == '__main__':
