@@ -268,7 +268,7 @@ class RepeaterManager(commands.Cog):
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: Reaction, user: Member | User):
-        if user.bot or not reaction.message.guild:
+        if user.bot or not reaction.message.guild or reaction.message.author.bot:
             return
         guild_id = reaction.message.guild.id
         if guild_id in self.repeaters:

@@ -141,15 +141,15 @@ class Player:
         self.is_playing = False
         self.ctx = ctx
         self.new_turn()
-    
+
     def new_turn(self):
         self.turn = Turn(self.init_dice_count, self.ctx, self.member.display_name, total_score=self.total_score)
 
     def end_turn(self):
         if self.turn:
             self.total_score += self.turn.turn_score
-            self.win = self.total_score >= 4000
-            self.is_playing = False
+        self.win = self.total_score >= 4000
+        self.is_playing = False
 
 
 class Turn:
@@ -191,7 +191,7 @@ class Turn:
         if self.dice_count == 6:
             resp += "=======================\n"
         resp += f"-----------------------\n"
-        resp += f"{self.player_name}】 的回合\n"
+        resp += f"【{self.player_name}】 的回合\n"
         resp += f"-----------------------\n"
         resp += f"投出了: `{', '.join(str(d) for d in self.roll)}`\n"
         emojis = [idx_to_emoji(i) for i in range(len(self.score_candidates))]
@@ -206,7 +206,7 @@ class Turn:
                 choice = f"~~{choice}~~"
             resp += f"{choice}\n"
         resp += f"\n当前总得分: {self.total_score} 分\n"
-        resp += f"当前临时积分: {self.turn_score} 分\n"
+        resp += f"本轮临时积分: {self.turn_score} 分\n"
         if alert:
             resp += f"***{alert}***\n"
         return resp, emojis
@@ -297,8 +297,11 @@ class GambleGame:
         if member not in [p.member for p in self.players]:
             self.players.append(Player(member, self.ctx))
 
-    def next_player(self):
+    def next_player(self, player: Player):
         if not self.players:
+            return
+            
+        if player.member != self.current_player():
             return
         if self.current_player_index == -1:
             self.current_player_index = 0
@@ -313,14 +316,10 @@ class GambleGame:
 
         # the current player plays his turn
         current_player = self.players[self.current_player_index]
-        if current_player.win:
-            await self.ctx.channel.send(f"🎉 {current_player.member.display_name} 胜出，游戏结束！")
-            self.is_finished = True
-            return
 
         await current_player.turn.roll_dice()
         if current_player.turn.is_failed:
-            self.next_player()
+            self.next_player(current_player)
             await self.next_turn()
 
     async def on_reaction_add(self, reaction: Reaction, user: User | Member):
@@ -367,17 +366,17 @@ class GambleGame:
                     return
                 self.players[self.current_player_index].turn.update_turn_score()
                 self.players[self.current_player_index].turn.update_dice_count()
-                if self.players[self.current_player_index].win:
-                    await self.ctx.channel.send(f"🎉 {user.display_name} 胜出，游戏结束！")
-                    self.is_finished = True
-                    return
                 
                 if reaction.emoji == "✅" or self.players[self.current_player_index].turn.dice_count <= 0:
                     self.players[self.current_player_index].end_turn()
+                    if self.players[self.current_player_index].win:
+                        await self.ctx.channel.send(f"🎉 {user.display_name} 胜出，游戏结束！")
+                        self.is_finished = True
+                        return
                     await self.ctx.channel.send(
                         f"{user.display_name} 本回合结束，累计积分 {self.players[self.current_player_index].total_score} 分。"
                     )
-                    self.next_player()
+                    self.next_player(player)
                 await self.next_turn()
                 return
 
@@ -437,9 +436,17 @@ class GambleDelegater(commands.Cog):
         self.games[ctx.channel.id] = game
         await game.prepare_game()
 
+    async def show_scores(self, channel_id):
+        if channel_id in self.games:
+            await self.games[channel_id].show_scores()
+
     async def run(self, ctx, *args):
-        if args and args[0] == "new":
+        if not args:
+            return
+        if args[0] == "new":
             await self.new_game(ctx)
+        if args[0] == "scores":
+            await self.show_scores(ctx.channel.id)
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: Reaction, user: Member | User):
