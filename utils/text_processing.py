@@ -18,6 +18,24 @@ def _replace_links(text):
     return re.sub(url_pattern, "看这个链接", text)
 
 
+def _preocess_punctuation(text: str) -> str:
+    puncts = {
+        "?": "问号",
+        "!": "感叹号",
+        ".": "点",
+        "…": "点点",
+        "？": "问号",
+        "！": "感叹号",
+        "。": "点",
+    }
+
+    match = re.match(r'^[.。!！?？…]+', text)
+    if not match:
+        return text
+    leading = match.group()
+    replaced = ''.join(puncts.get(ch, ch) for ch in leading)
+    return replaced + text[len(leading):]
+
 def _process_channel_mention(content, guild, emoji_dict) -> str:
     def repl(match):
         channel_id = int(match.group(1))
@@ -62,22 +80,25 @@ def _process_emoji(text: str, emoji_dict: dict, custom_emoji_dict: dict) -> str:
     return text
 
 
-def _number_to_chinese(text: str) -> str:
+def _number_to_chinese(s: str) -> str:
     """
     匹配文本中的数字（整数和小数），将每一位数字转换为汉字，小数点转换为「点」。
     例：123.45 -> 一二三点四五
     """
-    num_map = {
-        '0': '零', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
-        '6': '六', '7': '七', '8': '八', '9': '九', '.': '点'
-    }
+    num_map = {'0': '零', '1': '一', '2': '二', '3': '三', '4': '四',
+               '5': '五', '6': '六', '7': '七', '8': '八', '9': '九', '.': '点'}
 
-    def repl(match):
-        numbers = [num_map.get(ch, ch) for ch in match.group(0)]
-        numbers = [n for n in numbers if n is not None]
-        return ''.join(numbers)
-    # 匹配整数和小数
-    return re.sub(r'\d+\.\d+|\d+', repl, text)
+    # 转换百分数
+    s = re.sub(r'(\d+(?:\.\d+)?)%', r'百分之\1', s)
+
+    # 匹配三位及以上整数，不用 \b，改用负向前后查找，避免影响中文
+    def replace_long_integer(match):
+        num = match.group(1)
+        return ''.join(num_map[ch] for ch in num)
+
+    s = re.sub(r'(?<!\d)(\d{4,})(?!\d)', replace_long_integer, s)
+
+    return s
 
 
 def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
@@ -99,6 +120,7 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
     text = _process_emoji(text, default_emoji, custom_emoji)
     text = _replace_links(text)
     text = _number_to_chinese(text)
+    text = _preocess_punctuation(text)
 
     image_count = sum(
         1 for attachment in message.attachments

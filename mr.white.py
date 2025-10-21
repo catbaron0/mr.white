@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
+from workers.gamble_manager import GambleDelegater
 from workers.dice import roll_dice
 from config.config import load_white_config
 from utils.webhook_msg import process_webhook_start_rp
@@ -32,9 +33,15 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="-", intents=intents, help_command=None)
 
 repeater_manager = RepeaterManager(bot)
+gamble_delegater = GambleDelegater()
 translator = Translator()
 
 CFG = load_white_config()
+
+
+@bot.command(name="g")
+async def gamble(ctx, args):
+    await gamble_delegater.run(ctx, args)
 
 
 @bot.command(name="rp")
@@ -185,6 +192,7 @@ async def on_message(message):
 
 async def main():
     await bot.add_cog(repeater_manager)
+    await bot.add_cog(gamble_delegater)
 
 
 if __name__ == '__main__':

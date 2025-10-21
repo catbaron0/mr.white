@@ -160,7 +160,7 @@ class Repeater:
             LOG.info(f"DEBUG user is muted: {user_name}({user_id})")
             return
         content = message.content.strip()
-        if content.startswith("#") or content.startswith("#") or content.startswith("-"):
+        if content.startswith("#") or content.startswith("#") or content.startswith("-") or content.startswith("//"):
             return
         await self.message_queue.put(QueueMessage(
             msg_type=msg_type,

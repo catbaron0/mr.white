@@ -2,7 +2,7 @@ import logging
 import asyncio
 
 import discord
-from discord import Message, VoiceChannel, VoiceClient, VoiceRegion
+from discord import Message, VoiceChannel, VoiceClient
 
 
 LOG = logging.getLogger(__name__)
@@ -11,17 +11,17 @@ LOG = logging.getLogger(__name__)
 async def connect_voice_channel(
     voice_channel: VoiceChannel,
     message: Message | None,
-    region: VoiceRegion | None = None,
+    # region: VoiceRegion | None = None,
     retry: int = 3
 ) -> tuple[VoiceClient | None, Message | None]:
 
     vc: VoiceClient | None = None
-    if region and voice_channel.rtc_region != region:
-        if message:
-            reply_content = message.content + f"\n... 尝试切换到 {region} 节点\n"
-            message = await message.edit(content=reply_content)
-        LOG.warning(f"Switching voice channel region to {region}")
-        await voice_channel.edit(rtc_region=region)
+    # if region and voice_channel.rtc_region != region:
+    #     if message:
+    #         reply_content = message.content + f"\n... 尝试切换到 {region} 节点\n"
+    #         message = await message.edit(content=reply_content)
+    #     LOG.warning(f"Switching voice channel region to {region}")
+    #     await voice_channel.edit(rtc_region=region)
 
     if voice_channel.guild.voice_client:
         await voice_channel.guild.voice_client.disconnect()
