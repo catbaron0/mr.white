@@ -151,7 +151,7 @@ class RepeaterManager(commands.Cog):
             voice_channel = ctx.author.voice.channel
         else:
             voice_channel = None
-        if args and args[0] == "start":
+        if not args or not args[0] or args[0] == "start":
             await self.start_repeater(ctx.guild, voice_channel, ctx.message)
         if args and args[0] == "stop":
             await self.stop_repeater(ctx.guild)

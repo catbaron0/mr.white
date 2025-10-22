@@ -46,7 +46,7 @@ async def gamble(ctx, args=None):
 
 
 @bot.command(name="rp")
-async def repeater(ctx, args):
+async def repeater(ctx, args=None):
     await repeater_manager.run(ctx, args)
 
 
@@ -105,7 +105,7 @@ async def reboot(ctx):
 async def help(ctx):
     help_msg = (
         "### 复读机器人（使用时用户需要在语音频道）\n"
-        "- `-rp start`: 开启复读\n"
+        "- `-rp`: 开启复读\n"
         "- `-rp stop`: 关闭复读\n"
         "- `-rp restart`: 重启复读机器人\n"
         "- `-rp mute`: 不要复读自己的文字\n"
@@ -113,7 +113,7 @@ async def help(ctx):
         "### 其他命令\n"
         "- `-tr <文字>`: 把<文字>翻译成中文。如果没有参数，则翻译被回复的消息\n"
         "- `-intro <事物>`: 简单介绍<事物>\n"
-        "- `-g new`: 开启骰子游戏\n"
+        "- `-g`: 开启骰子游戏\n"
         "- `-help`: 显示此信息\n"
     )
     await ctx.message.reply(help_msg)
