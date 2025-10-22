@@ -3,7 +3,7 @@
 # 其中，2、3、4、6必须为三个为同一数才能计分，比如，三个2，记200分，三个3记三百分，单个和两个不计分。四个同样的数字，则翻倍，比如四个2则是400分，五个同样的数字则再翻倍，五个2为800分，六个同样的数字则再翻倍，6个2为1600分。
 # 而1和5则可以单独一个就能计分，1为100，5为50。
 # 三个1为1000分，四个1为2000分，五个1为4000分，同理三个5为500分··········
-# 12345和23456为500分，123456为1500分
+# 12345为500分，23456为750分，123456为1500分
 # 也就意味着，如果你开局刷到了5个1及以上点数，将直接结束比赛。
 # 游戏开始后，开始投骰子，骰子的结果里，有可以计分的点数骰子，你将可以把其拿出来，并写上临时的计分里，然后可以选择继续投剩下的骰子，直到你选择计分并结束回合，或者投出没有任何计分的点数。
 # 当选择计分结束回合时，临时的计分则会成为你的真实积分，而当没有投出任何可以计分点数时，所有临时计分将清零，并跳过你的回合。
@@ -55,7 +55,7 @@ def score_2_to_6(roll: list[int], num: int) -> list[dict]:
         score = num * 400
         results.append({"score": score, "remove": [num] * 5})
     if count == 6:
-        score = num * 400
+        score = num * 800
         results.append({"score": score, "remove": [num] * 6})
     return results
 
@@ -70,7 +70,7 @@ def score_straights(roll: list[int]) -> list[dict]:
 
     # 检查顺子23456
     if all(num in unique_roll for num in range(2, 7)):
-        results.append({"score": 500, "remove": [2, 3, 4, 5, 6]})
+        results.append({"score": 750, "remove": [2, 3, 4, 5, 6]})
 
     # 检查大顺子123456
     if all(num in unique_roll for num in range(1, 7)):
@@ -152,6 +152,8 @@ class Turn:
 
     def update_dice_count(self):
         self.dice_count = sum(self.current_dice_count)
+        if self.dice_count == 0:
+            self.dice_count = 6
 
     def update_turn_score(self):
         self.turn_score += self.round_score
@@ -184,7 +186,9 @@ class Turn:
             emoji = emojis[i]
             choice = f"{emoji} 移除骰子 {remove}, 得分 {score}"
             if candidate["is_selected"]:
-                choice = f"~~{choice}~~"
+                choice = f"- ~~{choice}~~"
+            else:
+                choice = f"- {choice}"
             resp += f"{choice}\n"
         resp += f"\n当前总得分: {self.total_score} 分\n"
         resp += f"本轮临时积分: {self.turn_score} 分\n"
