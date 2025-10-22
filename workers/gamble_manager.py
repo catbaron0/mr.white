@@ -11,7 +11,7 @@
 import random
 import logging
 
-from discord import User, Member, Reaction, Message, Emoji, PartialEmoji
+from discord import User, Member, Reaction, Message
 from discord.ext import commands
 
 
@@ -94,42 +94,24 @@ def compute_score(roll: list[int]) -> list[dict]:
 
 def idx_to_emoji(idx: int) -> str:
     """将 0-25 转换为 🇦 - 🇿"""
-    if not 0 <= idx < 26:
+    if not 0 <= idx < 10:
         raise ValueError("Index out of range for emoji conversion")
     # 🇦 的 Unicode 是 U+1F1E6
-    return chr(0x1F1E6 + idx)
+
+    number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+    return number_emojis[idx]
 
 
-def emoji_to_idx(emoji: Emoji | PartialEmoji | str) -> int:
+def emoji_to_idx(emoji: str) -> int:
     """将 🇦 - 🇿 转换为 0-25"""
-    if isinstance(emoji, (Emoji, PartialEmoji)):
-        name = emoji.name
-        if not name.startswith("regional_indicator_") or len(name) != 21:
-            raise ValueError("Invalid emoji for index conversion")
-        letter = name[-1]
-    elif isinstance(emoji, str):
-        if len(emoji) != 1 or not ('🇦' <= emoji <= '🇿'):
-            raise ValueError("Invalid emoji for index conversion")
-        letter = chr(ord(emoji) - 0x1F1E6 + ord('a'))
-    else:
-        raise ValueError("Invalid emoji type for index conversion")
-    return ord(letter) - ord('a')
-
-
-# def idx_to_emoji(idx: int) -> Emoji | PartialEmoji:
-#     if idx < 0 or idx > 25:
-#         raise ValueError("Index out of range for emoji conversion")
-#     letter = string.ascii_lowercase[idx]
-#     emoji_name = "regional_indicator_" + letter
-#     return discord.PartialEmoji(name=emoji_name)
-
-
-# def emoji_to_idx(emoji: Emoji | PartialEmoji) -> int:
-#     name = emoji.name
-#     if not name.startswith("regional_indicator_") or len(name) != 21:
-#         raise ValueError("Invalid emoji for index conversion")
-#     letter = name[-1]
-#     return ord(letter) - ord('a')
+    number_emojis = {
+        "1️⃣": 0, "2️⃣": 1, "3️⃣": 2, "4️⃣": 3, "5️⃣": 4,
+        "6️⃣": 5, "7️⃣": 6, "8️⃣": 7, "9️⃣": 8, "🔟": 9,
+    }
+    if emoji not in number_emojis:
+        raise ValueError("Invalid emoji for index conversion")
+    return number_emojis[emoji]
 
 
 class Player:
@@ -143,7 +125,7 @@ class Player:
         self.new_turn()
 
     def new_turn(self):
-        self.turn = Turn(self.init_dice_count, self.ctx, self.member.display_name, total_score=self.total_score)
+        self.turn = Turn(self.init_dice_count, self.ctx, self.member, total_score=self.total_score)
 
     def end_turn(self):
         if self.turn:
@@ -153,10 +135,10 @@ class Player:
 
 
 class Turn:
-    def __init__(self,  dice_count: int, ctx, player_name: str, total_score: int = 0):
+    def __init__(self,  dice_count: int, ctx, member: Member | User, total_score: int = 0):
         self.round_score = 0
         self.turn_score = 0
-        self.player_name = player_name
+        self.member = member
         self.ctx = ctx
         self.roll_results: list[list[int]] = []
         self.roll = []
@@ -189,11 +171,10 @@ class Turn:
     def generate_choice_message(self, alert: str) -> tuple[str, list[str]]:
         resp = ""
         if self.dice_count == 6:
-            resp += "=======================\n"
-        resp += f"-----------------------\n"
-        resp += f"【{self.player_name}】 的回合\n"
-        resp += f"-----------------------\n"
-        resp += f"投出了: `{', '.join(str(d) for d in self.roll)}`\n"
+            resp += "# =================================\n"
+        else:
+            resp += "# --------------------------\n"
+        resp += f"【{self.member.mention}】投出了: `{', '.join(str(d) for d in self.roll)}`\n\n"
         emojis = [idx_to_emoji(i) for i in range(len(self.score_candidates))]
         if emojis:
             resp += "可选得分方案：\n"
@@ -207,8 +188,9 @@ class Turn:
             resp += f"{choice}\n"
         resp += f"\n当前总得分: {self.total_score} 分\n"
         resp += f"本轮临时积分: {self.turn_score} 分\n"
+        resp += f"*当前临时积分: {self.round_score} 。*\n"
         if alert:
-            resp += f"***{alert}***\n"
+            resp += f"**{alert}**\n"
         return resp, emojis
 
     async def display_removal_choices(self):
@@ -216,13 +198,14 @@ class Turn:
             self.turn_score = 0
             resp, emojis = self.generate_choice_message("")
             self.is_finished = True
-            resp += "\n❌ 本次投骰无可计分点数，回合结束，本轮临时积分清零。"
+            resp += "\n⚠️次投骰无可计分点数，回合结束，本轮临时积分清零。"
             msg = await self.ctx.channel.send(resp)
         else:
             resp, emojis = self.generate_choice_message("")
             msg = await self.ctx.channel.send(resp)
             emojis.append("➡️")
             emojis.append("✅")
+            emojis.append("👀")
             emojis.append("❌")
             for emoji in emojis:
                 await msg.add_reaction(emoji)
@@ -241,7 +224,6 @@ class Turn:
         LOG.info("current_dice_count:", self.current_dice_count)
 
         emojis = self.emojis
-        alert = ""
         for i in range(len(self.score_candidates)):
             self.score_candidates[i]["is_selected"] = False
         for emoji in emojis:
@@ -256,9 +238,11 @@ class Turn:
             self.round_score += self.score_candidates[idx]["score"]
             for i in range(7):
                 self.current_dice_count[i] -= removal.count(i)
-        alert = f"当前临时积分: {self.round_score} 。"
+        alert = ""
         if any([i < 0 for i in self.current_dice_count]):
-            alert += "注意：你已经选择了超过可用骰子的得分方案，请调整选择。"
+            alert = "```\n"
+            alert += "你已经选择了超过可用骰子的得分方案，请调整选择。"
+            alert += "```"
         await self.update_choice_message(alert)
 
 
@@ -270,7 +254,17 @@ class GambleGame:
         self.start_message: Message | None = None
         self.is_finished: bool = False
 
-        self.start_content = "赌博游戏已开始，等待玩家加入。点 🙋‍♂️ 加入游戏。"
+        start_content = ""
+        start_content += "## 🎲 骰子游戏开始\n"
+        start_content += "- 🙋‍♂️ 加入游戏\n"
+        start_content += "- 🏁 开始游戏！\n"
+        start_content += "- 🔟 选择得分方案\n"
+        start_content += "- ➡️ 结束本回合\n"
+        start_content += "- ✅ 结束本轮并计入分数\n"
+        start_content += "- 👀 列出当前分数\n"
+        start_content += "- ❌ 移除当前玩家(剩余玩家可继续)。\n"
+        start_content += "- 详细规则：https://discord.com/channels/808893235103531039/1429127004959146045/1429127004959146045\n"
+        self.start_content = start_content
 
     def current_player(self) -> Player | None:
         if self.current_player_index == -1:
@@ -297,11 +291,8 @@ class GambleGame:
         if member not in [p.member for p in self.players]:
             self.players.append(Player(member, self.ctx))
 
-    def next_player(self, player: Player):
-        if not self.players:
-            return
-            
-        if player.member != self.current_player():
+    def next_player(self, player: Player | None = None):
+        if player and player != self.current_player():
             return
         if self.current_player_index == -1:
             self.current_player_index = 0
@@ -329,6 +320,7 @@ class GambleGame:
         # join game
         if self.start_message and reaction.message.id == self.start_message.id and reaction.emoji == "🙋‍♂️":
             resp = self.start_content
+            resp += "\n--------------------------"
             for reaction in self.start_message.reactions:
                 if reaction.emoji != "🙋‍♂️":
                     continue
@@ -336,7 +328,7 @@ class GambleGame:
                     self.join(user)
                 break
             for player in self.players:
-                resp += f"\n{player.member.display_name} 加入了游戏！"
+                resp += f"\n*{player.member.mention}入了游戏！*"
             self.start_message = await self.start_message.edit(content=resp)
             return
 
@@ -353,16 +345,41 @@ class GambleGame:
             await self.next_turn()
             return
 
+        current_player = self.current_player()
+        roll_msg = current_player.turn.roll_msg if current_player else None
+        # show scores or quit game
+        if roll_msg and reaction.message.id == roll_msg.id:
+            if reaction.emoji == "❌":
+                # remove user
+                for p in self.players:
+                    if p.member == user:
+                        self.players.remove(p)
+                        await self.ctx.channel.send(f"{user.display_name} 已退出游戏。")
+                        if len(self.players) < 2:
+                            await self.ctx.channel.send("❌ 玩家不足两人，游戏结束。")
+                            self.is_finished = True
+                        else:
+                            if p == current_player:
+                                self.next_player()
+                                await self.next_turn()
+                        break
+                return
+            elif reaction.emoji == "👀":
+                # show scores
+                await self.show_scores()
+                return
+
         # select options during turn
-        player = self.current_player()
-        roll_msg = player.turn.roll_msg if player else None
-        if player and user == player.member and roll_msg and reaction.message.id == roll_msg.id:
+        if current_player and user == current_player.member and roll_msg and reaction.message.id == roll_msg.id:
             if reaction.emoji == "✅" or reaction.emoji == "➡️":
                 # end turn
-                if not player.turn.is_any_selected():
-                    await self.players[self.current_player_index].turn.update_choice_message("❌ 你必须选择至少一个得分方案才能结束回合。")
+                if not current_player.turn.is_any_selected():
+                    alert = "```\n"
+                    alert += "你必须选择至少一个得分方案才能结束回合。"
+                    alert += "```"
+                    await self.players[self.current_player_index].turn.update_choice_message(alert)
                     return
-                if any([i < 0 for i in player.turn.current_dice_count]):
+                if any([i < 0 for i in current_player.turn.current_dice_count]):
                     return
                 self.players[self.current_player_index].turn.update_turn_score()
                 self.players[self.current_player_index].turn.update_dice_count()
@@ -373,21 +390,15 @@ class GambleGame:
                         await self.ctx.channel.send(f"🎉 {user.display_name} 胜出，游戏结束！")
                         self.is_finished = True
                         return
+                    total_score = self.players[self.current_player_index].total_score
+                    turn_score = self.players[self.current_player_index].turn.turn_score
                     await self.ctx.channel.send(
-                        f"{user.display_name} 本回合结束，累计积分 {self.players[self.current_player_index].total_score} 分。"
+                        f"{user.display_name} 本回合结束，累计积分 {total_score}(+{turn_score}) 分。"
                     )
-                    self.next_player(player)
+                    self.next_player(current_player)
                 await self.next_turn()
                 return
 
-            elif reaction.emoji == "❌":
-                # remove user
-                for p in self.players:
-                    if p.member == user:
-                        self.players.remove(p)
-                        await self.ctx.channel.send(f"{user.display_name} 已退出游戏。")
-                        break
-                return
             else:
                 self.players[self.current_player_index].turn.emojis.add(reaction.emoji)
                 await self.players[self.current_player_index].turn.select_option()
@@ -421,7 +432,7 @@ class GambleGame:
     async def show_scores(self):
         resp = ""
         for player in self.players:
-            resp += f"{player.member.display_name}: {player.total_score}\n"
+            resp += f"- {player.member.display_name}: {player.total_score}\n"
         await self.ctx.channel.send(resp)
 
 
