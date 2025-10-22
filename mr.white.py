@@ -40,7 +40,8 @@ CFG = load_white_config()
 
 
 @bot.command(name="g")
-async def gamble(ctx, args):
+async def gamble(ctx, args=None):
+    logger.info(f"Gamble command invoked with args: {args}")
     await gamble_delegater.run(ctx, args)
 
 

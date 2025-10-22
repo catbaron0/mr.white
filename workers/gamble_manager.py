@@ -257,10 +257,10 @@ class GambleGame:
         start_content = ""
         start_content += "## 🎲 骰子游戏开始\n"
         start_content += "- 🙋‍♂️ 加入游戏\n"
-        start_content += "- 🏁 开始游戏！\n"
+        start_content += "- 🏁 开始游戏\n"
         start_content += "- 🔟 选择得分方案\n"
-        start_content += "- ➡️ 结束本回合\n"
-        start_content += "- ✅ 结束本轮并计入分数\n"
+        start_content += "- ➡️ 确定方案并进入下一回合\n"
+        start_content += "- ✅ 计入分数并切换至下一名玩家\n"
         start_content += "- 👀 列出当前分数\n"
         start_content += "- ❌ 移除当前玩家(剩余玩家可继续)。\n"
         start_content += "- 详细规则：https://discord.com/channels/808893235103531039/1429127004959146045/1429127004959146045\n"
@@ -452,9 +452,8 @@ class GambleDelegater(commands.Cog):
             await self.games[channel_id].show_scores()
 
     async def run(self, ctx, *args):
-        if not args:
-            return
-        if args[0] == "new":
+        LOG.info(f"GambleDelegater run with args: {args}")
+        if not args or not args[0] or args[0] == "new":
             await self.new_game(ctx)
         if args[0] == "scores":
             await self.show_scores(ctx.channel.id)
