@@ -187,7 +187,6 @@ async def sync_commends():
 async def on_ready():
     await sync_commends()
     logger.info(f'✅ Logged in as {client.user}')
-    print("Registered cogs:", client.cogs)
 
 
 @client.event

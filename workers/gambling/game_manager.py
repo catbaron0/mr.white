@@ -1,9 +1,9 @@
 import discord
-from discord import Interaction
+from discord import Interaction, Message
 from discord.ext import commands
 
 from workers.gambling.dispatcher import Dispatcher
-from workers.gambling.game import RollView, Roll
+from workers.gambling.game import RollView, Turn
 from workers.gambling.signals import NewGameSignal, RollSignal
 from workers.gambling.game import Game
 
@@ -12,6 +12,15 @@ class GameView(discord.ui.View):
     def __init__(self, dispatcher: Dispatcher):
         super().__init__(timeout=None)
         self.dispatcher = dispatcher
+        self.message: Message | None = None
+
+    async def disable_all(self):
+        if not self.message:
+            return
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+        await self.message.edit(view=self)
 
     @discord.ui.button(label="加入游戏", style=discord.ButtonStyle.primary)
     async def join_button(self, interaction: Interaction, button: discord.ui.Button):
@@ -38,6 +47,7 @@ class GameDealer:
         self.interaction = interaction
         self.game = Game()
         self.roll = None
+        self.active_views = []
 
     # NewGameSignal handlers
     async def on_join_button_clicked(self, click_interaction: Interaction):
@@ -93,9 +103,15 @@ class GameDealer:
             content=content
         )
 
+    async def disable_views(self):
+        for view in self.active_views:
+            await view.disable_all()
+        self.active_views.clear()
+
     async def send_message(self, interaction: Interaction):
         assert self.roll is not None
         assert self.game.current_player is not None
+        await self.disable_views()
         view = RollView(
             self.dispatcher,
             self.roll,
@@ -103,7 +119,8 @@ class GameDealer:
             self.game.current_player.member.id
         )
         content = self.roll.generate_message()
-        await interaction.followup.send(content=content, view=view)
+        view.message = await interaction.channel.send(content=content, view=view)
+        self.active_views.append(view)
 
     async def next_roll(self, click_interaction: Interaction, next_player: bool):
         # check player count
@@ -119,7 +136,6 @@ class GameDealer:
 
         # next roll for the same player
         if self.roll and self.roll.is_ok_to_submit() and not next_player:
-            print("next roll")
             self.roll.finish()
             self.roll.roll_dice()
             assert self.game.current_player is not None
@@ -127,7 +143,6 @@ class GameDealer:
 
         # next roll for the next player
         if self.roll and self.roll.is_ok_to_submit() and next_player:
-            print("next player")
             # update current message
             self.roll.finish()
             self.roll.submit_score()
@@ -138,26 +153,23 @@ class GameDealer:
 
             # new message
             self.game.next_player()
-            self.roll = Roll(self.game, self.dispatcher)
+            self.roll = Turn(self.game, self.dispatcher)
             await self.send_message(click_interaction)
 
         # first roll
         if not self.roll or not self.game.current_player:
-            print("first player")
             self.game.next_player()
-            self.roll = Roll(self.game, self.dispatcher)
+            self.roll = Turn(self.game, self.dispatcher)
             await self.send_message(click_interaction)
 
         # failed
         if self.roll.is_failed and next_player:
-            print("failed")
             self.game.next_player()
-            self.roll = Roll(self.game, self.dispatcher)
+            self.roll = Turn(self.game, self.dispatcher)
             await self.send_message(click_interaction)
 
         # failed agail
         if self.roll.is_failed:
-            print("Failed finally")
             await self.next_roll(click_interaction, next_player=True)
 
 
@@ -176,7 +188,8 @@ class GambleManager(commands.Cog):
         view = GameView(dispatcher)
 
         content = game_dealer.game.generate_message_content()
-        await interaction.followup.send(content=content, view=view)
+        view.message = await interaction.followup.send(content=content, view=view)
+        game_dealer.active_views.append(view)
 
     async def run(self, interaction: Interaction):
         await self.new_game(interaction)

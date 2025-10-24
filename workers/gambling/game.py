@@ -1,7 +1,7 @@
 import random
 
 import discord
-from discord import User, Member, Interaction
+from discord import User, Member, Interaction, Message
 from workers.gambling.dispatcher import Dispatcher
 from workers.gambling.signals import RollSignal
 
@@ -73,16 +73,16 @@ class Game:
     def generate_message_content(self) -> str:
         content = ""
         content += "## 🎲 骰子游戏\n"
-        content += "- 详细规则：https://discord.com/channels/808893235103531039/1429127004959146045/1429127004959146045\n"
+        content += "详细规则：https://discord.com/channels/808893235103531039/1429127004959146045/1429127004959146045\n"
         if self.player_count > 0:
             content += "\n```\n"
             for player in self.players:
-                content += f"*{player.member.mention} 已加入游戏！*"
+                content += f"@{player.member.display_name} 已加入游戏！\n"
             content += '```'
         return content
 
 
-class Roll:
+class Turn:
     def __init__(self,  game: Game, dispatcher: Dispatcher):
         self.dispatcher = dispatcher
         self.game = game
@@ -148,19 +148,18 @@ class Roll:
         for i, candidate in enumerate(self.score_candidates):
             score = candidate["score"]
             remove = ', '.join([str(r) for r in candidate["remove"]])
-            choice = f"{number_emojis[i]} 移除骰子 `{remove}`, 得分 `{score}`"
+            choice = f"{number_emojis[i]} 移除骰子 [{remove}], 得分 {score}"
             if candidate["is_selected"]:
-                choice = f"- ~~{choice}~~"
+                choice = f"- ~~*{choice}*~~"
             else:
                 choice = f"- {choice}"
             resp += f"{choice}\n"
         resp += f"\n当前总得分: {current_player.score}\n"
         resp += f"本轮临时积分: {self.turn_score}\n"
-        resp += f"*当前临时积分: {self.roll_score}*\n"
+        resp += f"当前临时积分: {self.roll_score}\n"
 
         alerts = self._generate_alert()
         resp += alerts
-        print("alerts:", alerts)
         return resp
 
     def _generate_alert(self) -> str:
@@ -178,7 +177,7 @@ class Roll:
 
 
 class RollView(discord.ui.View):
-    def __init__(self, dispatcher: Dispatcher, roll: Roll, choice_count: int, target_user_id: int):
+    def __init__(self, dispatcher: Dispatcher, roll: Turn, choice_count: int, target_user_id: int):
         super().__init__(timeout=None)
         self.dispatcher = dispatcher
         self.target_user_id = target_user_id
@@ -186,6 +185,15 @@ class RollView(discord.ui.View):
         self.create_buttons(choice_count)
         self.roll = roll
         self.dispatcher.on(RollSignal.SELECTION_UPDATED.value, self.on_selection_updated)
+        self.message: Message | None = None
+
+    async def disable_all(self):
+        if not self.message:
+            return
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+        await self.message.edit(view=self)
 
     async def disable_buttons(self, interaction: Interaction):
         message = interaction.message
@@ -260,7 +268,7 @@ class RollView(discord.ui.View):
         return callback
 
     def _create_select_button(self) -> discord.ui.Button:
-        button = discord.ui.Button(label="确定回合", style=discord.ButtonStyle.success)
+        button = discord.ui.Button(label="确定回合", style=discord.ButtonStyle.primary)
         button.callback = self._next_roll()
         return button
 
