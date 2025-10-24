@@ -195,12 +195,7 @@ async def setup_hook():
     await client.add_cog(gamble_manager)
 
 
-discord_token = os.getenv("DISCORD_KEY_DEV")
-if discord_token:
-    client.run(discord_token)
-
-
 if __name__ == '__main__':
-    discord_token = os.getenv("DISCORD_KEY")
+    discord_token = os.getenv("DISCORD_KEY_DEV")
     if discord_token:
-        client.run(discord_token, reconnect=True)
+        client.run(discord_token)
