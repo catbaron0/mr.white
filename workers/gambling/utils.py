@@ -9,6 +9,9 @@ def score_1_or_5(roll: list[int], num: int) -> list[dict]:
     if count >= 1:
         score = base_scores
         results.append({"score": score, "remove": [num]})
+    if count >= 2:
+        score = base_scores * 2
+        results.append({"score": score, "remove": [num] * 2})
     if count >= 3:
         score = base_scores * 10
         results.append({"score": score, "remove": [num] * 3})
