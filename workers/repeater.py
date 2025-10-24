@@ -40,19 +40,19 @@ class Repeater:
     def get_user_name(self, member: Member | User) -> str:
         user_name = member.display_name
         user_id = member.id
-        return self.config["custom_username"].get(str(user_id), user_name)
+        return self.config.get("custom_username", {}).get(str(user_id), user_name)
 
-    def generate_script(self, que_msg: QueueMessage) -> str:
+    async def generate_script(self, que_msg: QueueMessage) -> str:
         if que_msg.user:
-            display_name = self.config["custom_username"].get(str(que_msg.user.id), que_msg.user.display_name)
+            display_name = self.config.get("custom_username", {}).get(str(que_msg.user.id), que_msg.user.display_name)
         else:
             display_name = "那个谁"
         if que_msg.msg_type == "text":
-            return process_text_message(
+            return await process_text_message(
                 que_msg,
                 self.default_emoji,
-                self.config["custom_emoji"],
-                self.config["custom_username"]
+                self.config.get("custom_emoji", {}),
+                self.config.get("custom_username", {})
             )
 
         if que_msg.msg_type == "sticker":
@@ -74,7 +74,7 @@ class Repeater:
             emoji = emoji_to_str(
                 que_msg.reaction_emoji,
                 self.default_emoji,
-                self.config["custom_emoji"],
+                self.config.get("custom_emoji", {})
             )
             if not emoji:
                 emoji = "表情包"
@@ -84,7 +84,7 @@ class Repeater:
     async def messages_to_audio(self):
         while True:
             que_message = await self.message_queue.get()
-            text = self.generate_script(que_message)
+            text = await self.generate_script(que_message)
             if not text:
                 continue
             LOG.debug(f"tts text: {text}")
@@ -93,8 +93,8 @@ class Repeater:
             user_id = que_message.user.id
             try:
                 if self.config.get("tts_model", "default") == "gpt-tts":
-                    default_voice_config = self.config["voice_config"]["default"]
-                    voice_cfg = self.config["voice_config"].get(
+                    default_voice_config = self.config.get("voice_config", {}).get("default", {})
+                    voice_cfg = self.config.get("voice_config", {}).get(
                         str(user_id),
                         default_voice_config
                     )
@@ -147,7 +147,7 @@ class Repeater:
         :param user_id: 用户ID
         :return: 如果用户被静音返回True，否则返回False
         """
-        return str(user_id) in self.muted_users or "all" in self.muted_users
+        return user_id in self.muted_users or -1 in self.muted_users
 
     async def append_message(self, message: Message):
         if message.channel.id != self.voice_channel.id:

@@ -5,6 +5,7 @@ from functools import partial
 from discord import Emoji, PartialEmoji, Message
 
 from workers.que_msg import QueueMessage
+from utils.open_ai import gpt_summary, describe_image
 
 
 CONFIG_PATH = Path(__file__).parent
@@ -18,7 +19,7 @@ def _replace_links(text):
     return re.sub(url_pattern, "看这个链接", text)
 
 
-def _preocess_punctuation(text: str) -> str:
+def _process_punctuation(text: str) -> str:
     puncts = {
         "?": "问号",
         "!": "感叹号",
@@ -29,12 +30,42 @@ def _preocess_punctuation(text: str) -> str:
         "。": "点",
     }
 
+    num_map = {1:"一个", 2:"两个", 3:"三个", 4:"四个", 5:"五个",
+               6:"六个", 7:"七个", 8:"八个", 9:"九个", 10:"十个"}
+
+    # 匹配前导标点
     match = re.match(r'^[.。!！?？…]+', text)
     if not match:
         return text
+
     leading = match.group()
-    replaced = ''.join(puncts.get(ch, ch) for ch in leading)
+
+    # 分组统计连续相同标点
+    groups = []
+    prev = leading[0]
+    count = 1
+    for ch in leading[1:]:
+        if ch == prev:
+            count += 1
+        else:
+            groups.append((prev, count))
+            prev = ch
+            count = 1
+    groups.append((prev, count))
+
+    # 生成中文描述
+    parts = []
+    for ch, count in groups:
+        count_text = num_map.get(count, f"{count}个")
+        punct = puncts.get(ch, ch)
+        if not punct:
+            continue
+        parts.append(count_text + punct)
+    replaced = "".join(parts)
+
+    # 拼接剩余部分
     return replaced + text[len(leading):]
+
 
 def _process_channel_mention(content, guild, emoji_dict) -> str:
     def repl(match):
@@ -101,7 +132,7 @@ def _number_to_chinese(s: str) -> str:
     return s
 
 
-def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
+async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
     message = que_msg.message
     if message is None:
         return ""
@@ -122,16 +153,27 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
     text = _number_to_chinese(text)
     text = _preocess_punctuation(text)
 
-    image_count = sum(
-        1 for attachment in message.attachments
-        if attachment.content_type and attachment.content_type.startswith("image/")
-    )
+    attachments = message.attachments
+    url = ""
+    image_attatchments = []
+    for att in attachments:
+        if att.content_type and att.content_type.startswith("image/"):
+            image_attatchments.append(att)
+        if not url and att.url:
+            url = att.url
+    image_count = len(image_attatchments)
+
     if image_count > 0:
         if image_count == 1:
             image_count = ""
         if image_count == 2:
             image_count = "两"
-        text += f"\n看这{image_count}张图"
+        text += f"\n看这{image_count}张图。\n"
+
+    if url:
+        desc = await describe_image(url)
+        if desc:
+            text += f"{desc}"
 
     user_name = custom_user.get(str(que_msg.user.id), que_msg.user.display_name)
     if message.reference and message.reference.resolved and isinstance(message.reference.resolved, Message):
@@ -140,7 +182,11 @@ def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoj
         user_name = f"{user_name}回复{target_username}"
 
     if len(text) > 100:
-        return f"{user_name}说了很多东西你们自己看吧"
+        desc = await gpt_summary(text)
+        if desc:
+            return f"{user_name}说了很长一段话, {desc}"
+        else:
+            return f"{user_name}说了很多东西你们自己看吧"
     else:
         return f"{user_name}说, {text}"
 

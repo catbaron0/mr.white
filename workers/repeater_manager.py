@@ -4,7 +4,8 @@ from pathlib import Path
 import logging
 
 import discord
-from discord import User, Member, Reaction, Message
+from discord import Interaction
+from discord import User, Member, Reaction
 from discord.ext import commands
 
 from workers.repeater import Repeater
@@ -20,63 +21,71 @@ class RepeaterManager(commands.Cog):
     def __init__(self, bot):
         self.repeaters: dict[int, Repeater] = {}
         self.stop_locks = {}  # NEW: 防止并发 stop
+
+        # Cog needs bot reference to register listeners
         self.bot = bot
 
-    async def restart_repeater(self, guild, voice_channel, message):
-        await self.stop_repeater(guild)
-        await self.start_repeater(guild, voice_channel, message)
+    async def start_repeater(self, interaction: Interaction):
+        assert interaction.guild is not None
+        assert interaction.user is not None
+        assert isinstance(interaction.user, Member)
 
-    async def start_repeater(self, guild, voice_channel, message: None | Message = None):
-        reply_content = "正在启动..."
-        reply_msg: Message | None = None
-        if message:
-            reply_msg = await message.reply(reply_content)
-        if not voice_channel:
-            if reply_msg:
-                reply_content = reply_msg.content + "\n❌...语音频道活跃测试，用户需要加入语音频道"
-                reply_msg = await reply_msg.edit(content=reply_content)
+        response_content = "正在启动..."
+        await interaction.followup.send(response_content)
+
+        if interaction.user.voice:
+            user_voice_channel = interaction.user.voice.channel
+        else:
+            user_voice_channel = None
+
+        if not user_voice_channel:
+            response_content += "\n❌...语音频道活跃测试，用户需要加入语音频道"
+            await interaction.edit_original_response(content=response_content)
             return
+        else:
+            response_content += "\n✅...语音频道活跃测试..."
+            await interaction.edit_original_response(content=response_content)
 
-        LOG.info(f"guild.id: {guild.id}")
-        if guild.id in self.repeaters and guild.voice_client and guild.voice_client.is_connected():
+        guild = interaction.guild
+        if guild.id in self.repeaters and guild.voice_client and guild.voice_client.channel:
             # The bot is working
-            if reply_msg:
-                reply_content = reply_msg.content + f"\n❌...复读模块繁忙: {voice_channel.name}"
-                reply_msg = await reply_msg.edit(content=reply_content)
+            voice_channel_name = guild.voice_client.channel.name  # type: ignore
+            response_content += f"\n❌...复读模块繁忙: {voice_channel_name}"
+            await interaction.edit_original_response(content=response_content)
             return
-
-        if reply_msg:
-            reply_content = reply_msg.content + "\n✅...语音频道活跃测试..."
-            reply_msg = await reply_msg.edit(content=reply_content)
-            reply_content = reply_msg.content + "\n✅...连接语音节点..."
-            reply_msg = await reply_msg.edit(content=reply_content)
+        else:
+            response_content += "\n✅...连接语音节点..."
+            await interaction.edit_original_response(content=response_content)
 
         try:
             vc = None
-            vc, reply_msg = await connect_voice_channel(voice_channel, reply_msg)
+            for i in range(3):
+                vc = await connect_voice_channel(user_voice_channel)
+                if vc and vc.is_connected():
+                    break
+                response_content += f"\n❌...第 {i+1} 次连接失败，正在重试..."
+                await interaction.edit_original_response(content=response_content)
+                await asyncio.sleep(1.0)
         except Exception as e:
-            if reply_msg:
-                reply_content = reply_msg.content + "\n❌...语音频道连接失败"
-                reply_msg = await reply_msg.edit(content=reply_content)
+            response_content += f"\n❌...语音频道连接错误 {e}"
+            await interaction.edit_original_response(content=response_content)
             LOG.error(f"Voice channel connection error: {e}")
             return
 
         if not (vc and vc.is_connected()):
-            if reply_msg:
-                reply_content = reply_msg.content + "\n❌...语音频道连接失败"
-                reply_msg = await reply_msg.edit(content=reply_content)
+            response_content += "\n❌...语音频道连接失败"
+            await interaction.edit_original_response(content=response_content)
             LOG.error("Voice channel connection failed")
             return
 
-        self.repeaters[guild.id] = Repeater(guild, voice_channel, vc)
-        if reply_msg:
-            reply_content = reply_msg.content + f"\n✅...复读模块就位: {voice_channel.name}"
-            reply_msg = await reply_msg.edit(content=reply_content)
+        self.repeaters[guild.id] = Repeater(guild, user_voice_channel, vc)
+        response_content += f"\n✅...复读模块就位: {user_voice_channel.name}"
+        await interaction.edit_original_response(content=response_content)
 
         await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
         await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
 
-    async def _stop_repeater(self, guild_id):
+    async def stop_repeater(self, guild_id):
         if guild_id not in self.stop_locks:
             self.stop_locks[guild_id] = asyncio.Lock()
 
@@ -105,108 +114,55 @@ class RepeaterManager(commands.Cog):
         if guild_id in self.stop_locks:
             del self.stop_locks[guild_id]
 
-    async def stop_repeater(self, guild):
-        await self._stop_repeater(guild.id)
-
-    async def update_config(self, ctx):
-        guild_id = ctx.guild.id
+    async def update_config(self, interaction: Interaction):
+        if not interaction.guild:
+            return
+        guild = interaction.guild
         LOG.info("更新配置文件")
         try:
-            self.repeaters[guild_id].load_config()
-            await ctx.message.reply("✅...配置文件已更新")
+            self.repeaters[guild.id].load_config()
+            await interaction.followup.send("✅...配置文件已更新")
         except Exception as e:
             LOG.error(f"❌...配置文件更新失败: {e}")
-            await ctx.message.reply(f"❌...配置文件更新失败: {e}")
+            await interaction.followup.send(f"❌...配置文件更新失败 {e}")
 
-    async def mute(self, ctx, args):
-        guild_id = ctx.guild.id
-        user_id = str(ctx.message.author.id)
-        if len(args) > 1:
-            user_id = str(args[1])
+    async def mute(self, interaction: Interaction):
+        if not interaction.guild:
+            return
+        guild = interaction.guild
+        user = interaction.user
         try:
-            self.repeaters[guild_id].muted_users.add(user_id)
-            await ctx.message.reply("✅...用户已静音")
+            self.repeaters[guild.id].muted_users.add(user.id)
+            muted_users = self.repeaters[guild.id].muted_users
+            logging.info(f"Mute user: {muted_users}")
+            await interaction.followup.send(f"✅...{user.mention} 已被静音")
         except Exception as e:
-            await ctx.message.reply("❌...静音失败")
+            await interaction.followup.send(f"❌...{user.mention} 静音失败: {e}")
             LOG.error(f"Mute error: {e}")
 
-    async def unmute(self, ctx, args):
-        guild_id = ctx.guild.id
-        user_id = str(ctx.message.author.id)
-        if len(args) > 1:
-            user_id = str(args[1])
+    async def unmute(self, interaction):
+        if not interaction.guild:
+            return
+        guild = interaction.guild
+        user = interaction.user
         try:
-            if user_id == "all":
-                self.repeaters[guild_id].muted_users.clear()
-            else:
-                self.repeaters[guild_id].muted_users.remove(user_id)
-            await ctx.message.reply("✅...用户已取消静音")
+            self.repeaters[guild.id].muted_users.remove(user.id)
+            await interaction.followup.send(f"✅...{user.mention} 已解除静音")
         except Exception as e:
-            await ctx.message.reply("❌...取消静音失败")
+            await interaction.followup.send(f"❌...{user.mention} 解除静音失败: {e}")
             LOG.error(f"DEBUG unmute error: {e}")
 
-    async def run(self, ctx, *args):
-        LOG.debug(f"CTX.message: {ctx.message}")
-        if ctx.author.voice:
-            voice_channel = ctx.author.voice.channel
-        else:
-            voice_channel = None
-        if not args or not args[0] or args[0] == "start":
-            await self.start_repeater(ctx.guild, voice_channel, ctx.message)
-        if args and args[0] == "stop":
-            await self.stop_repeater(ctx.guild)
-        if args and args[0] == "restart":
-            await self.restart_repeater(ctx.guild, voice_channel, ctx.message)
-        if args and args[0] == "cfg":
-            await self.update_config(ctx)
-        if args and args[0] == "mute":
-            await self.mute(ctx, args)
-        if args and args[0] == "unmute":
-            await self.unmute(ctx, args)
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            # Ignore bot messages
-            return
-        if not message.guild:
-            # Not belong to a server
-            return
-        guild_id = message.guild.id
-        if guild_id in self.repeaters:
-            await self.repeaters[guild_id].append_message(message)
-
-    async def _update_bot_voice_state(self, member, before, after):
-        '''
-        If the bot is removed from the voice channel by accident,
-        reconnect it to the channel
-        '''
-        # The member is a bot
-        if member.id != self.bot.user.id:
-            return
-
-        # get possible guild_id
-        guild_id = None
-        if before.channel:
-            guild_id = before.channel.guild.id
-        elif after.channel:
-            guild_id = after.channel.guild.id
-        else:
-            return
-        if guild_id not in self.repeaters:
-            return
-
-        repeater = self.repeaters[guild_id]
-        # the bot was removed from the channel if after.channel is None
-        if before.channel and after.channel is None and not repeater.is_exiting:
-            LOG.info("Bot was removed from voice channel, try to reconnect")
-            try:
-                await before.channel.connect()
-                repeater.vc = before.channel.guild.voice_client
-                LOG.info("Bot reconnected to voice channel")
-            except Exception as e:
-                LOG.error(f"Failed to reconnect bot: {e}")
-        return
+    async def run(self, interaction: Interaction, cmd: str):
+        if cmd == "start":
+            await self.start_repeater(interaction)
+        if cmd == "stop" and interaction.guild:
+            await self.stop_repeater(interaction.guild.id)
+        if cmd == "mute":
+            await self.mute(interaction)
+        if cmd == "unmute":
+            await self.unmute(interaction)
+        if cmd == "cfg":
+            await self.update_config(interaction)
 
     async def _process_member_exiting(self, member, before, after):
         '''
@@ -232,7 +188,7 @@ class RepeaterManager(commands.Cog):
 
         if non_bot_members_count == 0 and before.channel.id == self.repeaters[guild_id].voice_channel.id:
             LOG.info(f"{non_bot_members_count} human members left, disconnecting channel")
-            await self._stop_repeater(guild_id)
+            await self.stop_repeater(guild_id)
         else:
             if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
@@ -259,8 +215,6 @@ class RepeaterManager(commands.Cog):
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        await self._update_bot_voice_state(member, before, after)
-
         if before.channel and after.channel and before.channel.id == after.channel.id:
             return
         await self._process_member_exiting(member, before, after)
@@ -273,3 +227,16 @@ class RepeaterManager(commands.Cog):
         guild_id = reaction.message.guild.id
         if guild_id in self.repeaters:
             await self.repeaters[guild_id].append_reaction_add(reaction, user)
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        logging.debug(f"on_message: {message.content}")
+        if message.author.bot:
+            # Ignore bot messages
+            return
+        if not message.guild:
+            # Not belong to a server
+            return
+        guild_id = message.guild.id
+        if guild_id in self.repeaters:
+            await self.repeaters[guild_id].append_message(message)

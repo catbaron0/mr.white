@@ -1,17 +1,16 @@
-import sys
-import asyncio
 import logging
+import sys
 import os
 
 import discord
+from discord import app_commands, Interaction
+from discord import Message
 from discord.ext import commands
 
 from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
-from workers.gamble_manager import GambleDelegater
+from workers.gambling.game_manager import GambleManager
 from workers.dice import roll_dice
-from config.config import load_white_config
-from utils.webhook_msg import process_webhook_start_rp
 from utils.open_ai import gpt_intro
 import utils.reboot as rb
 
@@ -29,60 +28,28 @@ intents.message_content = True
 intents.members = True
 intents.voice_states = True
 
+# client = discord.Client(intents=intents)
+# tree = app_commands.CommandTree(client)
+client = commands.Bot(command_prefix="-", intents=intents, help_command=None)
+tree = client.tree
 
-bot = commands.Bot(command_prefix="-", intents=intents, help_command=None)
-
-repeater_manager = RepeaterManager(bot)
-gamble_delegater = GambleDelegater()
+repeater_manager = RepeaterManager(client)
 translator = Translator()
-
-CFG = load_white_config()
-
-
-@bot.command(name="g")
-async def gamble(ctx, args=None):
-    logger.info(f"Gamble command invoked with args: {args}")
-    await gamble_delegater.run(ctx, args)
+gamble_manager = GambleManager()
 
 
-@bot.command(name="rp")
-async def repeater(ctx, args=None):
-    await repeater_manager.run(ctx, args)
-
-
-@bot.command(name="tr")
-async def translate(ctx, *, text=""):
-    if text.strip() == "cfg":
-        translator.load_config()
-        await ctx.message.reply("翻译配置已重新加载。")
-        return
-    if not text and ctx.message.reference:
-        # 如果没有参数且是回复消息，则翻译被回复的消息
-        replied = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        if replied and replied.content:
-            translated = await translator.translate(replied.content)
-            await replied.reply(translated)
-        return
-    if text:
-        # 如果有参数，则翻译参数内容
-        translated = await translator.translate(text)
-        if translated:
-            await ctx.message.reply(translated)
-
-
-@bot.command(name="r")
-async def dice(ctx, *args):
-    resp = ""
+@client.command(name="r")
+async def roll(ctx, *args):
     reason = args[-1] if args else ""
     if roll_dice(reason) != []:
         reason = ""
     else:
-        reason = reason + "检定"
         args = args[:-1]
+    resp = f"{ctx.message.author.mention} 的 {reason} 检定\n"
 
     for i, arg in enumerate(args):
         results = [str(r) for r in roll_dice(arg)]
-        intro = f"{reason}第 {i+1} 次结果"
+        intro = f"第 {i+1} 次结果"
         if len(args) == 1:
             intro = f"{reason}结果"
         if results:
@@ -93,114 +60,148 @@ async def dice(ctx, *args):
     await ctx.message.reply(resp)
 
 
-@bot.command(name="reboot")
-async def reboot(ctx):
-    await ctx.message.reply("重启中...")
+# -------------------------------------------
+# *************** 翻译命令部分 ***************
+@tree.command(name="translate", description="Translate the provided text.")
+@app_commands.describe(text="要翻译的文本")
+async def translate(interaction: Interaction, text: str):
+    await interaction.response.defer()
+    if text.strip() == "cfg":
+        translator.load_config()
+        await interaction.followup.send("翻译配置已重新加载。")
+        return
+    else:
+        # 如果有参数，则翻译参数内容
+        translated = await translator.translate(text)
+        if translated:
+            await interaction.followup.send(translated)
+
+
+@tree.context_menu(name="翻译消息")
+async def translate_msg(interaction: Interaction, reference: Message):
+    await interaction.response.defer(ephemeral=False)
+
+    translated = await translator.translate(reference.content)
+    if not translated:
+        translated = "翻译失败，请稍后重试。"
+    await interaction.followup.send(translated, ephemeral=False)
+
+
+# -------------------------------------------
+# *************** roll dices ***************
+@tree.command(name="roll", description="掷骰子.")
+@app_commands.describe(dice="要掷的骰子表达式，例如 '2d6',  或者 'd10', 可以一次投掷多个骰子，用空格分隔")
+@app_commands.describe(reason="检定理由，例如 '聆听', '侦查', '图书馆'")
+async def dice(interaction: Interaction, dice: str, reason: str):
+    await interaction.response.defer(ephemeral=False)
+
+    user = interaction.user
+    resp: str = f"{user.mention} 的掷骰结果:\n"
+
+    dices = dice.split()
+    for i, d in enumerate(dices):
+        results = [str(r) for r in roll_dice(d)]
+        resp_i = f"**{reason} **第 {i+1} 次投掷"
+
+        # format the 1st response
+        if len(dices) == 1:
+            resp_i = f"**{reason}**"
+
+        if results:
+            result_str = f"- {resp_i}: `" + ", ".join(results) + "`"
+        else:
+            result_str = f"- {resp_i}: 格式错误"
+        resp += result_str + "\n"
+    await interaction.followup.send(resp, ephemeral=False)
+
+
+# ---------------------------------------
+# *************** 重启命令 ***************
+@tree.command(name="reboot", description="重启机器人。重启是万能药。我也想重启啊！")
+async def reboot(interaction: Interaction):
+    await interaction.response.send_message("重启中...", ephemeral=False)
     rb.restart()
-    await bot.close()
+    await client.close()
     sys.exit(0)
 
 
-@bot.command(name="help")
-async def help(ctx):
-    help_msg = (
-        "### 复读机器人（使用时用户需要在语音频道）\n"
-        "- `-rp`: 开启复读\n"
-        "- `-rp stop`: 关闭复读\n"
-        "- `-rp restart`: 重启复读机器人\n"
-        "- `-rp mute`: 不要复读自己的文字\n"
-        "- `-rp unmute`: 开始复读自己的文字\n"
-        "### 其他命令\n"
-        "- `-tr <文字>`: 把<文字>翻译成中文。如果没有参数，则翻译被回复的消息\n"
-        "- `-intro <事物>`: 简单介绍<事物>\n"
-        "- `-g`: 开启骰子游戏\n"
-        "- `-help`: 显示此信息\n"
-    )
-    await ctx.message.reply(help_msg)
+# *************** 信息查询 ***************
+@tree.command(name="intro", description="简单介绍某个事物。")
+@app_commands.describe(item="你想知道什么？")
+async def intro(interaction: Interaction, item: str):
+    await interaction.response.defer(ephemeral=False, thinking=True)
 
-
-@bot.command(name="intro")
-async def intro(ctx, args):
-    if not args:
-        answer = "-intro <事物>: 简单介绍<事物>\n"
-    elif len(args) > 20:
+    if len(item) > 20:
         answer = "你看看你自己在说什么"
     else:
-        async with ctx.channel.typing():
-            answer = await gpt_intro(args)
-    await ctx.message.reply(answer)
+        answer = await gpt_intro(item)
+    await interaction.followup.send(answer, ephemeral=False)
 
 
-@bot.command(name="cfg")
-async def update_cfg(ctx) -> None:
-    global CFG
-    CFG = load_white_config()
-    await ctx.message.reply("更新配置成功！\n")
+# ----------------------------------------
+# *************** 复读机命令 ***************
+@tree.command(name="repeater", description="复读机命令。将语音频道重的消息复读出来。")
+@app_commands.choices(cmd=[
+    app_commands.Choice(name="启动", value="start"),
+    app_commands.Choice(name="静音自己", value="mute"),
+    app_commands.Choice(name="取消静音", value="unmute"),
+    app_commands.Choice(name="停止", value="stop"),
+    app_commands.Choice(name="更新配置", value="cfg"),
+])
+async def repeater(interaction: Interaction, cmd: str):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await repeater_manager.run(interaction, cmd)
+    except Exception as e:
+        logger.error(f"❌ 复读机命令执行失败: {e}")
+        response = await interaction.original_response()
+        response_content = response.content if response else ""
+        response_content += f"\n❌ 复读机命令执行失败: {e}"
+        await interaction.followup.send(response_content, ephemeral=True)
 
 
-@bot.event
-async def on_ready():
-    logger.info(f'✅ Logged in as {bot.user}')
+# ----------------------------------------
+# *************** 骰子游戏 ***************
+@tree.command(name="gambling", description="来自天国拯救的骰子游戏。")
+async def gamble(interaction: Interaction):
+    await gamble_manager.run(interaction)
 
 
-@bot.event
-async def on_message(message):
-    # 判断是否为命令消息
-    if message.content and message.content.startswith(bot.command_prefix):
-        cmd_name = message.content[len(str(bot.command_prefix)):].split()[0]
-        if bot.get_command(cmd_name):
-            await bot.process_commands(message)
-            return
-
-    # 只处理文字消息
-    # 机器人的消息也会被 auto_translate 处理
-    # 所以要在忽略机器人消息之前调用 auto_translat
-    if message.content:
-        await translator.auto_translate(message)
-
-    if message.webhook_id:
-        await process_webhook_start_rp(message, repeater_manager)
-
-    # 忽略机器人自己的消息
-    if message.author.bot:
+# *******************************************
+# *************** 运行客户端部分 ************
+async def sync_commends():
+    try:
+        guild_id = os.getenv("DISCORD_GUILD_ID")
+        assert guild_id is not None
+        guild_id = int(guild_id)
+    except (TypeError, ValueError):
+        logger.error("❌ DISCORD_GUILD_ID 环境变量未设置或无效。请设置为有效的整数。")
         return
-
-    # 让命令系统继续工作（非命令消息也要调用，防止其他自定义命令失效）
-    logger.info(f"{message.author.display_name}: {message.content}")
-    await bot.process_commands(message)
-
-
-# @bot.event
-# async def on_voice_state_update(member, before, after):
-#     # Mute mumbers in the specific voice channel
-
-#     # skip if the member joined the same channel
-#     if before.channel == after.channel and before.self_mute == after.self_mute:
-#         return
-
-#     if after.channel and after.channel.id in CFG.get("muted_channels", []):
-#         if not after.self_mute:
-#             try:
-#                 await member.edit(mute=True)
-#                 print(f"{member.display_name} 加入频道，已静音")
-#             except Exception as e:
-#                 print(f"静音失败：{member.display_name} - {e}")
-#     else:
-#         # TODO: dont unmute if the member wasn't muted by this bot
-#         if before.self_mute:
-#             try:
-#                 await member.edit(mute=False)
-#                 print(f"{member.display_name} 离开频道，已解除静音")
-#             except Exception as e:
-#                 print(f"解除静音失败：{member.display_name} - {e}")
+    guild = discord.Object(id=guild_id)
+    tree.copy_global_to(guild=guild)
+    synced = await tree.sync(guild=guild)
+    logger.info(f"✅ 已同步 {len(synced)} 个命令")
 
 
-async def main():
-    await bot.add_cog(repeater_manager)
-    await bot.add_cog(gamble_delegater)
+@client.event
+async def on_ready():
+    await sync_commends()
+    logger.info(f'✅ Logged in as {client.user}')
+    print("Registered cogs:", client.cogs)
+
+
+@client.event
+async def setup_hook():
+    await client.add_cog(repeater_manager)
+    await client.add_cog(gamble_manager)
+
+
+discord_token = os.getenv("DISCORD_KEY_DEV")
+if discord_token:
+    client.run(discord_token)
 
 
 if __name__ == '__main__':
     discord_token = os.getenv("DISCORD_KEY")
-    asyncio.run(main())
-    bot.run(discord_token, reconnect=True)
+    if discord_token:
+        client.run(discord_token, reconnect=True)
