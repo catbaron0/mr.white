@@ -90,7 +90,7 @@ async def translate_msg(interaction: Interaction, reference: Message):
 
 # -------------------------------------------
 # *************** roll dices ***************
-@tree.command(name="roll", description="掷骰子.")
+@tree.command(name="roll", description="掷骰子。")
 @app_commands.describe(dice="要掷的骰子表达式，例如 '2d6',  或者 'd10', 可以一次投掷多个骰子，用空格分隔")
 @app_commands.describe(reason="检定理由，例如 '聆听', '侦查', '图书馆'")
 async def dice(interaction: Interaction, dice: str, reason: str):

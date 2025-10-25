@@ -151,7 +151,7 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
     text = _process_emoji(text, default_emoji, custom_emoji)
     text = _replace_links(text)
     text = _number_to_chinese(text)
-    text = _preocess_punctuation(text)
+    text = _process_punctuation(text)
 
     attachments = message.attachments
     url = ""
