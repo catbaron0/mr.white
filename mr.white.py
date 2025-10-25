@@ -89,7 +89,7 @@ async def translate_msg(interaction: Interaction, reference: Message):
 
 # -------------------------------------------
 # *************** roll dices ***************
-@tree.command(name="roll", description="掷骰子.")
+@tree.command(name="roll", description="掷骰子。")
 @app_commands.describe(dice="要掷的骰子表达式，例如 '2d6',  或者 'd10', 可以一次投掷多个骰子，用空格分隔")
 @app_commands.describe(reason="检定理由，例如 '聆听', '侦查', '图书馆'")
 async def dice(interaction: Interaction, dice: str, reason: str):
@@ -119,7 +119,7 @@ async def dice(interaction: Interaction, dice: str, reason: str):
 # *************** 重启命令 ***************
 @tree.command(name="reboot", description="重启机器人。重启是万能药。我也想重启啊！")
 async def reboot(interaction: Interaction):
-    await interaction.response.send_message("重启中...", ephemeral=False)
+    await interaction.response.send_message("重启中...", ephemeral=True)
     rb.restart()
     await client.close()
     sys.exit(0)
@@ -196,6 +196,6 @@ async def setup_hook():
 
 
 if __name__ == '__main__':
-    discord_token = os.getenv("DISCORD_KEY_DEV")
+    discord_token = os.getenv("DISCORD_KEY")
     if discord_token:
         client.run(discord_token)
