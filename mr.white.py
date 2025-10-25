@@ -152,7 +152,7 @@ async def intro(interaction: Interaction, item: str):
     app_commands.Choice(name="停止", value="stop"),
     app_commands.Choice(name="更新配置", value="cfg"),
 ])
-async def repeater(interaction: Interaction, cmd: str):
+async def repeater(interaction: Interaction, cmd: str = "start"):
     await interaction.response.defer(ephemeral=True)
     try:
         await repeater_manager.run(interaction, cmd)
@@ -173,7 +173,7 @@ async def repeater(interaction: Interaction, cmd: str):
     app_commands.Choice(name="停止", value="stop"),
     app_commands.Choice(name="更新配置", value="cfg"),
 ])
-async def rp(interaction: Interaction, cmd: str):
+async def rp(interaction: Interaction, cmd: str = "start"):
     await interaction.response.defer(ephemeral=True)
     try:
         await repeater_manager.run(interaction, cmd)
