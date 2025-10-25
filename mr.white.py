@@ -63,7 +63,7 @@ async def roll(ctx, *args):
 
 # -------------------------------------------
 # *************** 翻译命令部分 ***************
-@tree.command(name="translate", description="Translate the provided text.")
+@tree.command(name="translate", description="翻译为中文.")
 @app_commands.describe(text="要翻译的文本")
 async def translate(interaction: Interaction, text: str):
     await interaction.response.defer()
@@ -91,6 +91,7 @@ async def translate_msg(interaction: Interaction, reference: Message):
 # -------------------------------------------
 # *************** roll dices ***************
 @tree.command(name="roll", description="掷骰子。")
+@app_commands.rename(dice="骰子", reason="检定项目")
 @app_commands.describe(dice="要掷的骰子表达式，例如 '2d6',  或者 'd10', 可以一次投掷多个骰子，用空格分隔")
 @app_commands.describe(reason="检定理由，例如 '聆听', '侦查', '图书馆'")
 async def dice(interaction: Interaction, dice: str, reason: str):
@@ -143,6 +144,7 @@ async def intro(interaction: Interaction, item: str):
 # ----------------------------------------
 # *************** 复读机命令 ***************
 @tree.command(name="repeater", description="复读机命令。将语音频道重的消息复读出来。")
+@app_commands.rename(cmd="命令选项")
 @app_commands.choices(cmd=[
     app_commands.Choice(name="启动", value="start"),
     app_commands.Choice(name="静音自己", value="mute"),
@@ -163,6 +165,7 @@ async def repeater(interaction: Interaction, cmd: str):
 
 
 @tree.command(name="rp", description="复读机命令。将语音频道重的消息复读出来。")
+@app_commands.rename(cmd="命令选项")
 @app_commands.choices(cmd=[
     app_commands.Choice(name="启动", value="start"),
     app_commands.Choice(name="静音自己", value="mute"),
@@ -184,7 +187,7 @@ async def rp(interaction: Interaction, cmd: str):
 
 # ----------------------------------------
 # *************** 骰子游戏 ***************
-@tree.command(name="gambling", description="来自天国拯救的骰子游戏。")
+@tree.command(name="gambling", description="来自《天国拯救》的骰子游戏。")
 async def gamble(interaction: Interaction):
     await gamble_manager.run(interaction)
 
