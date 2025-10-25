@@ -86,7 +86,7 @@ class GameDealer:
         if not self.roll:
             return
         self.roll.update_selection(idx)
-        content = self.roll.generate_message()
+        content = self.roll.generate_message_content()
         assert click_interaction.message is not None
         await click_interaction.followup.edit_message(
             message_id=click_interaction.message.id,
@@ -96,7 +96,7 @@ class GameDealer:
 
     async def update_message(self, interaction: Interaction):
         assert self.roll is not None
-        content = self.roll.generate_message()
+        content = self.roll.generate_message_content()
         assert interaction.message is not None
         await interaction.followup.edit_message(
             message_id=interaction.message.id,
@@ -118,8 +118,8 @@ class GameDealer:
             len(self.roll.score_candidates),
             self.game.current_player.member.id
         )
-        content = self.roll.generate_message()
-        view.message = await interaction.channel.send(content=content, view=view)
+        content = self.roll.generate_message_content()
+        view.message = await interaction.followup.send(content=content, view=view)
         self.active_views.append(view)
 
     async def next_roll(self, click_interaction: Interaction, next_player: bool):

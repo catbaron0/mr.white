@@ -140,9 +140,10 @@ class Turn:
             for i in range(7):
                 self.dice_point_counts[i] += removed_dices.count(i)
 
-    def generate_message(self):
+    def generate_message_content(self):
         number_emojis: list[str] = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         resp = ""
+        # resp = "# " + "=" * 60
         assert self.game.current_player is not None
         current_player = self.game.current_player
         resp += f"【{current_player.member.mention}】投出了: `{', '.join(str(d) for d in self.roll)}`\n\n"
