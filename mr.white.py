@@ -45,17 +45,18 @@ async def roll(ctx, *args):
         reason = ""
     else:
         args = args[:-1]
-    resp = f"{ctx.message.author.mention} 的 {reason} 检定\n"
+        reason = f"**{reason}**"
+    resp = f"{ctx.message.author.mention} 开始检定 {reason}:\n"
 
     for i, arg in enumerate(args):
         results = [str(r) for r in roll_dice(arg)]
-        intro = f"第 {i+1} 次结果"
+        intro = f"第 {i+1} 次投掷结果："
         if len(args) == 1:
-            intro = f"{reason}结果"
+            intro = "投掷结果："
         if results:
-            result_str = f"{intro}: `" + ", ".join(results) + "`"
+            result_str = f"- {intro}: `" + ", ".join(results) + "`"
         else:
-            result_str = f"{intro}: 格式错误"
+            result_str = f"⚠️ {intro}: 格式错误"
         resp += result_str + "\n"
     await ctx.message.reply(resp)
 
@@ -96,16 +97,17 @@ async def dice(interaction: Interaction, dice: str, reason: str):
     await interaction.response.defer(ephemeral=False)
 
     user = interaction.user
-    resp: str = f"{user.mention} 的掷骰结果:\n"
+    reason = f"**{reason}**" if reason else ""
+    resp: str = f"{user.mention} 开始检定 {reason}:\n"
 
     dices = dice.split()
     for i, d in enumerate(dices):
         results = [str(r) for r in roll_dice(d)]
-        resp_i = f"**{reason} **第 {i+1} 次投掷"
+        resp_i = f"第 {i+1} 次投掷结果"
 
         # format the 1st response
         if len(dices) == 1:
-            resp_i = f"**{reason}**"
+            resp_i = "投掷结果"
 
         if results:
             result_str = f"- {resp_i}: `" + ", ".join(results) + "`"
@@ -149,6 +151,26 @@ async def intro(interaction: Interaction, item: str):
     app_commands.Choice(name="更新配置", value="cfg"),
 ])
 async def repeater(interaction: Interaction, cmd: str):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await repeater_manager.run(interaction, cmd)
+    except Exception as e:
+        logger.error(f"❌ 复读机命令执行失败: {e}")
+        response = await interaction.original_response()
+        response_content = response.content if response else ""
+        response_content += f"\n❌ 复读机命令执行失败: {e}"
+        await interaction.followup.send(response_content, ephemeral=True)
+
+
+@tree.command(name="rp", description="复读机命令。将语音频道重的消息复读出来。")
+@app_commands.choices(cmd=[
+    app_commands.Choice(name="启动", value="start"),
+    app_commands.Choice(name="静音自己", value="mute"),
+    app_commands.Choice(name="取消静音", value="unmute"),
+    app_commands.Choice(name="停止", value="stop"),
+    app_commands.Choice(name="更新配置", value="cfg"),
+])
+async def rp(interaction: Interaction, cmd: str):
     await interaction.response.defer(ephemeral=True)
     try:
         await repeater_manager.run(interaction, cmd)

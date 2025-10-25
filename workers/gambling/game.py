@@ -104,6 +104,7 @@ class Turn:
 
     def finish(self):
         self.turn_score += self.roll_score
+        self.roll_score = 0
 
         assert self.game.current_player is not None
         self.game.current_player.update_dice_count(sum(self.dice_point_counts))
