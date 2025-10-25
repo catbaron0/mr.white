@@ -122,7 +122,7 @@ async def dice(interaction: Interaction, dice: str, reason: str):
 # *************** 重启命令 ***************
 @tree.command(name="reboot", description="重启机器人。重启是万能药。我也想重启啊！")
 async def reboot(interaction: Interaction):
-    await interaction.response.send_message("重启中...", ephemeral=False)
+    await interaction.response.send_message("重启中...", ephemeral=True)
     rb.restart()
     await client.close()
     sys.exit(0)
