@@ -2,7 +2,12 @@ import os
 import tempfile
 import httpx
 import logging
+import aiohttp
+import io
+from PIL import Image
+import base64
 import asyncio
+
 
 from openai import OpenAI, AsyncOpenAI
 
@@ -49,6 +54,40 @@ async def gpt_chat(prompt: str) -> str:
 
 
 async def describe_image(url: str) -> str:
+    """
+    输入图片 URL（包括 Discord CDN 链接），返回图片简短描述。
+    """
+    # Step 1: 下载图片
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                raise ValueError(f"下载图片失败: HTTP {resp.status}")
+            img_bytes = await resp.read()
+
+    # Step 2: 转换为 PNG 并编码为 base64
+    image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+    data_url = f"data:image/png;base64,{b64_data}"
+
+    # Step 3: 请求 OpenAI API
+    response = await a_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "请用一句中文简要描述这张图片。"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+
+async def _describe_image(url: str) -> str:
     """
     输入图片 URL，返回图片的简短描述。
     """
@@ -102,3 +141,14 @@ async def gpt_intro(text: str) -> str:
     )
     return await gpt_chat(prompt)
 
+
+
+
+
+if __name__ == "__main__":
+    async def main():
+        url = "https://cdn.discordapp.com/attachments/808893235560185858/1431994320893775985/image.png?ex=68ff7023&is=68fe1ea3&hm=8b8318a6ada2b79538d88d05511703677aef4f6eb474126b41c3f8af86f77a67&"
+        print("desc:", await describe_image(url))
+        print("_desc:", await describe_image(url))
+
+    asyncio.run(main())

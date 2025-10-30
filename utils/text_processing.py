@@ -24,7 +24,7 @@ def _process_punctuation(text: str) -> str:
         "?": "问号",
         "!": "感叹号",
         ".": "点",
-        "…": "点点",
+        "…": "点点点",
         "？": "问号",
         "！": "感叹号",
         "。": "点",
@@ -172,10 +172,13 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
             image_count = "两"
         text += f"\n看这{image_count}张图。\n"
 
-    if url:
-        desc = await describe_image(url)
-        if desc:
-            text += f"{desc}"
+    # if url:
+    #     try:
+    #         desc = await describe_image(url)
+    #         if desc:
+    #             text += f"{desc}"
+    #     except Exception as e:
+    #         print(f"[describe_image] Failed to process {url}: {e}")
 
     user_name = custom_user.get(str(que_msg.user.id), que_msg.user.display_name)
     if message.reference and message.reference.resolved and isinstance(message.reference.resolved, Message):
