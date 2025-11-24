@@ -134,6 +134,16 @@ def _number_to_chinese(s: str) -> str:
     return s
 
 
+def _replace_special_tokens(text) -> str:
+    # process AI
+    pattern = r'(?<![A-Za-z])[Aa][Ii](?![A-Za-z])'
+    text = re.sub(pattern, ' A I ', text)
+    # process NS
+    pattern = r'(?<![A-Za-z])[Nn][Ss](?![A-Za-z])'
+    text = re.sub(pattern, ' N S ', text)
+    return text
+
+
 async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custom_emoji: dict, custom_user: dict) -> str:
     message = que_msg.message
     if message is None:
@@ -154,6 +164,7 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
     text = _replace_links(text)
     text = _number_to_chinese(text)
     text = _process_punctuation(text)
+    text = _replace_special_tokens(text)
 
     attachments = message.attachments
     url = ""
