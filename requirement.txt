@@ -1,0 +1,5 @@
+discord.py
+httpx
+pillow
+openai
+PyNaCl
