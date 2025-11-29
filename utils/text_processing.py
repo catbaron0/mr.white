@@ -203,11 +203,11 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
     if len(text) > 100:
         desc = await gpt_summary(text)
         if desc:
-            return f"{user_name}说了很长一段话, {desc}"
+            return f"{user_name} 说了很长一段话, {desc}"
         else:
-            return f"{user_name}说了很多东西你们自己看吧"
+            return f"{user_name} 说了很多东西你们自己看吧"
     else:
-        return f"{user_name}说, {text}"
+        return f"{user_name} 说, {text}"
 
 
 def emoji_to_str(emoji: Emoji | PartialEmoji | str | None, default_emoji_dict, custom_emoji_dict) -> str:
