@@ -141,6 +141,9 @@ def _replace_special_tokens(text) -> str:
     # process NS
     pattern = r'(?<![A-Za-z])[Nn][Ss](?![A-Za-z])'
     text = re.sub(pattern, ' N S ', text)
+    # process Leto
+    pattern = r'(?<![A-Za-z])[Ll][Ee][Tt][Oo](?![A-Za-z])'
+    text = re.sub(pattern, ' Lito ', text)
     return text
 
 
