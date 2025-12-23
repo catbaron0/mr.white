@@ -87,7 +87,7 @@ class Repeater:
             text = await self.generate_script(que_message)
             if not text:
                 continue
-            LOG.debug(f"tts text: {text}")
+            LOG.info(f"tts text: {text}")
             # 生成音频文件
             audio_f = None
             user_id = que_message.user.id
@@ -108,14 +108,14 @@ class Repeater:
                 LOG.error(f"tts error: {text}")
                 continue
             await self.audio_queue.put(audio_f)
-            LOG.debug(f"tts file: {audio_f}")
+            LOG.info(f"tts file: {audio_f}")
 
     async def play_audio(self, audio_f, cleanup=True):
         if not self.vc or not self.vc.is_connected():
             LOG.info("DEBUG voice client not connected")
             return
         while self.vc.is_playing():
-            LOG.debug(f"DEBUG waiting for finish playing: {audio_f}")
+            LOG.info(f"DEBUG waiting for finish playing: {audio_f}")
             await asyncio.sleep(0.5)
         LOG.info(f"DEBUG play audio_f: {audio_f}")
         options = '-vn -acodec libopus'

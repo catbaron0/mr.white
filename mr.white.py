@@ -1,6 +1,9 @@
 import logging
 import sys
 import os
+import io
+from pathlib import Path
+import asyncio
 
 import discord
 from discord import app_commands, Interaction
@@ -11,6 +14,7 @@ from workers.translator import Translator
 from workers.repeater_manager import RepeaterManager
 from workers.gambling.game_manager import GambleManager
 from workers.dice import roll_dice
+from workers.watermarker import add_watermark
 from utils.open_ai import gpt_intro
 import utils.reboot as rb
 
@@ -140,6 +144,66 @@ async def intro(interaction: Interaction, item: str):
         answer = await gpt_intro(item)
     await interaction.followup.send(answer, ephemeral=False)
 
+
+# *************** 水印 ***************
+@tree.command(name="watermarker", description="添加水印")
+@app_commands.rename(image_file="上传图片", image_for="图片用途", opacity="透明度", output_format="输出格式")
+@app_commands.choices(image_for=[
+    app_commands.Choice(name="水印", value="watermark"),
+    app_commands.Choice(name="原图", value="image"),
+])
+@app_commands.choices(output_format=[
+    app_commands.Choice(name="JPEG", value="JPEG"),
+    app_commands.Choice(name="PNG", value="PNG"),
+])
+@app_commands.describe(image_file="上传图片")
+@app_commands.describe(opacity="透明度(0~1), 0: 完全透明。1: 完全不透明")
+async def watermaker(
+    interaction: discord.Interaction,
+    image_file: discord.Attachment,
+    image_for: str = "image",
+    opacity: float = 1.0,
+    output_format:str = "PNG"
+):
+    await interaction.response.defer(thinking=True)
+
+    if image_file.content_type is None or not image_file.content_type.startswith('image/'):
+        await interaction.response.send_message("请上传一个图片文件。", ephemeral=True)
+        return
+
+    user_id = interaction.user.id
+    image_path = "data/image"
+    Path(image_path).mkdir(parents=True, exist_ok=True)
+    watermark_path = Path(image_path) / f"watermark_{user_id}.png"
+    if image_for == "image":
+        if not watermark_path.exists():
+            watermark_path = Path(image_path) / "watermark.png"
+        if opacity > 1:
+            opacity = opacity / 100
+        opacity = max(0, opacity)
+        opacity = min(1, opacity)
+
+        try:
+            image_bytes = await image_file.read() 
+        except Exception as e:
+            # 处理读取失败的情况
+            await interaction.followup.send(f"读取图片文件失败：{e}", ephemeral=True)
+            return
+
+        output_buffer = await asyncio.to_thread(
+            add_watermark, 
+            io.BytesIO(image_bytes), # 将 bytes 包装成 BytesIO
+            watermark_path, 
+            opacity, 
+            output_format
+        )
+        output_filename = os.path.splitext(image_file.filename)[0] + f"_wm.{output_format.lower()}"
+        processed_file = discord.File(output_buffer, filename=output_filename)
+        await interaction.user.send(files=[processed_file])
+        await interaction.followup.send("图片已发送至私信", ephemeral=True)
+    else:
+        await image_file.save(watermark_path)
+        await interaction.followup.send("水印更新成功", ephemeral=True)
 
 # ----------------------------------------
 # *************** 复读机命令 ***************
