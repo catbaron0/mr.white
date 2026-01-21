@@ -20,6 +20,8 @@ def _replace_links(text):
 
 
 def _process_punctuation(text: str) -> str:
+    text = text.replace("《", " ")
+    text = text.replace("》", " ")
     puncts = {
         "?": "问号",
         "!": "感叹号",
