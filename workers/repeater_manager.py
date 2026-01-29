@@ -25,6 +25,36 @@ class RepeaterManager(commands.Cog):
         # Cog needs bot reference to register listeners
         self.bot = bot
 
+
+    async def _start_repeater(self, guild,  user_voice_channel):
+        try:
+            vc = None
+            for i in range(3):
+                vc = await connect_voice_channel(user_voice_channel)
+                if vc and vc.is_connected():
+                    break
+                LOG.error(f"Voice channel connection error: retry {i+1}/3")
+                # await interaction.edit_original_response(content=response_content)
+                await asyncio.sleep(1.0)
+        except Exception as e:
+            # response_content += f"\n❌...语音频道连接错误 {e}"
+            # await interaction.edit_original_response(content=response_content)
+            LOG.error(f"Voice channel connection error: {e}")
+            return
+
+        if not (vc and vc.is_connected()):
+            # response_content += "\n❌...语音频道连接失败"
+            # await interaction.edit_original_response(content=response_content)
+            LOG.error("Voice channel connection failed")
+            return
+
+        self.repeaters[guild.id] = Repeater(guild, user_voice_channel, vc)
+        # response_content += f"\n✅...复读模块就位: {user_voice_channel.name}"
+        # await interaction.edit_original_response(content=response_content)
+
+        await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
+        await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
+
     async def start_repeater(self, interaction: Interaction):
         assert interaction.guild is not None
         assert interaction.user is not None
@@ -57,33 +87,34 @@ class RepeaterManager(commands.Cog):
             response_content += "\n✅...连接语音节点..."
             await interaction.edit_original_response(content=response_content)
 
-        try:
-            vc = None
-            for i in range(3):
-                vc = await connect_voice_channel(user_voice_channel)
-                if vc and vc.is_connected():
-                    break
-                response_content += f"\n❌...第 {i+1} 次连接失败，正在重试..."
-                await interaction.edit_original_response(content=response_content)
-                await asyncio.sleep(1.0)
-        except Exception as e:
-            response_content += f"\n❌...语音频道连接错误 {e}"
-            await interaction.edit_original_response(content=response_content)
-            LOG.error(f"Voice channel connection error: {e}")
-            return
+        await self._start_repeater(guild, user_voice_channel)
+        # try:
+        #     vc = None
+        #     for i in range(3):
+        #         vc = await connect_voice_channel(user_voice_channel)
+        #         if vc and vc.is_connected():
+        #             break
+        #         response_content += f"\n❌...第 {i+1} 次连接失败，正在重试..."
+        #         await interaction.edit_original_response(content=response_content)
+        #         await asyncio.sleep(1.0)
+        # except Exception as e:
+        #     response_content += f"\n❌...语音频道连接错误 {e}"
+        #     await interaction.edit_original_response(content=response_content)
+        #     LOG.error(f"Voice channel connection error: {e}")
+        #     return
 
-        if not (vc and vc.is_connected()):
-            response_content += "\n❌...语音频道连接失败"
-            await interaction.edit_original_response(content=response_content)
-            LOG.error("Voice channel connection failed")
-            return
+        # if not (vc and vc.is_connected()):
+        #     response_content += "\n❌...语音频道连接失败"
+        #     await interaction.edit_original_response(content=response_content)
+        #     LOG.error("Voice channel connection failed")
+        #     return
 
-        self.repeaters[guild.id] = Repeater(guild, user_voice_channel, vc)
-        response_content += f"\n✅...复读模块就位: {user_voice_channel.name}"
-        await interaction.edit_original_response(content=response_content)
+        # self.repeaters[guild.id] = Repeater(guild, user_voice_channel, vc)
+        # response_content += f"\n✅...复读模块就位: {user_voice_channel.name}"
+        # await interaction.edit_original_response(content=response_content)
 
-        await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
-        await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
+        # await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
+        # await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
 
     async def stop_repeater(self, guild_id):
         if guild_id not in self.stop_locks:
@@ -174,6 +205,8 @@ class RepeaterManager(commands.Cog):
 
         if before.channel is None:
             return
+        if member.bot:
+            return
 
         guild_id = before.channel.guild.id
         msg_type = "exit"
@@ -193,6 +226,8 @@ class RepeaterManager(commands.Cog):
             if guild_id in self.repeaters and before.channel.id == self.repeaters[guild_id].voice_channel.id:
                 await self.repeaters[guild_id].append_member_enter_exit_channel(member, before.channel, msg_type)
 
+
+
     async def _process_member_entering(self, member, before, after):
         '''
         Append an enter message to the msg queue
@@ -200,6 +235,8 @@ class RepeaterManager(commands.Cog):
         if before.channel and after.channel and before.channel.id == after.channel.id:
             return
         if after.channel is None:
+            return
+        if member.bot:
             return
 
         msg_type = "enter"
@@ -212,6 +249,8 @@ class RepeaterManager(commands.Cog):
 
         if guild_id in self.repeaters and after.channel.id == self.repeaters[guild_id].voice_channel.id:
             await self.repeaters[guild_id].append_member_enter_exit_channel(member, after.channel, msg_type)
+        if guild_id not in self.repeaters:
+            await self._start_repeater(after.channel.guild, after.channel)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
