@@ -13,7 +13,7 @@ from openai import OpenAI, AsyncOpenAI
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
-a_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY_TRANSLATE"))
+a_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 LOG = logging.getLogger(__name__)
 
 
