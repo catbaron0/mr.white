@@ -108,8 +108,10 @@ async def _describe_image(url: str) -> str:
 
 async def gpt_summary(prompt: str) -> str:
     command = "先说这段文字看起来像是什么题材，然简短地总结一下。\n"
+    command += "总结时请注意以下几点：\n"
     command += "题材描述：这好像是一首诗/应该是出自一本书的节选/好像是一段歌词/看起来像是政府报告。\n" 
     command += "不需要格式化输出，语言要自然并且尽量简短。\n" 
+    command += "文字长度控制在100字以内。\n"
     command += "文字如下：\n\n"
     command += prompt
     return await gpt_chat(command)
@@ -130,14 +132,17 @@ async def gpt_translate_to_zh(text: str) -> str:
     return await gpt_chat(prompt)
 
 
-async def gpt_intro(text: str) -> str:
-    """
-    异步调用 OpenAI GPT API 进行推文翻译，输入 text，返回翻译后的字符串
-    """
+async def ai_query(text: str, history: str) -> str:
     prompt = (
-        f"什么是 [{text}]。\n"
-        "介绍要适当的简洁易懂\n"
-        "不要提示后续对话\n"
+        "你是一个乐于助人的 AI 助手，能够回答各种各样的问题。\n"
+        "请根据以下提供的历史对话内容，简洁明了地回答用户的问题。\n"
+        "回答时请注意以下几点：\n"
+        "- 介绍要适当的简洁易懂。\n"
+        "- 不要提示后续对话。\n\n"
+
+        "历史对话记录：\n"
+        f"\n{history}\n\n"
+        f"{text}\n"
     )
     return await gpt_chat(prompt)
 

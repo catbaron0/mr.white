@@ -15,7 +15,7 @@ from workers.repeater_manager import RepeaterManager
 from workers.gambling.game_manager import GambleManager
 from workers.dice import roll_dice
 from workers.watermarker import add_watermark
-from utils.open_ai import gpt_intro
+from utils.open_ai import ai_query
 import utils.reboot as rb
 
 
@@ -32,14 +32,16 @@ intents.message_content = True
 intents.members = True
 intents.voice_states = True
 
-# client = discord.Client(intents=intents)
-# tree = app_commands.CommandTree(client)
 client = commands.Bot(command_prefix="-", intents=intents, help_command=None)
 tree = client.tree
 
 repeater_manager = RepeaterManager(client)
 translator = Translator()
 gamble_manager = GambleManager()
+
+
+AI_QUERY_HISTORY_LIMIT = 50
+AI_QUERY_HISTORY = []
 
 
 @client.command(name="r")
@@ -133,15 +135,27 @@ async def reboot(interaction: Interaction):
 
 
 # *************** 信息查询 ***************
-@tree.command(name="intro", description="简单介绍某个事物。")
-@app_commands.describe(item="你想知道什么？")
-async def intro(interaction: Interaction, item: str):
+@tree.command(name="ai", description="问问 AI。")
+@app_commands.describe(query="你想知道什么？")
+async def intro(interaction: Interaction, query: str): # 参数名保持一致
     await interaction.response.defer(ephemeral=False, thinking=True)
 
-    if len(item) > 20:
-        answer = "你看看你自己在说什么"
-    else:
-        answer = await gpt_intro(item)
+    global AI_QUERY_HISTORY
+    
+    # 1. 先整理历史记录
+    history = "\n".join(AI_QUERY_HISTORY)
+    user_name = interaction.user.display_name
+    prompt = f"@{user_name}: {query}。\n Assistant:"
+    
+    # 2. 调用 AI (确保 ai_query 是异步函数)
+    answer = await ai_query(prompt, history)
+
+    # 3. 更新历史记录并保持长度限制
+    AI_QUERY_HISTORY.append(f"@{user_name}: {query}\n Assistant: {answer}")
+    if len(AI_QUERY_HISTORY) > AI_QUERY_HISTORY_LIMIT:
+        AI_QUERY_HISTORY = AI_QUERY_HISTORY[-AI_QUERY_HISTORY_LIMIT:]
+
+    # 4. 发送回复
     await interaction.followup.send(answer, ephemeral=False)
 
 
