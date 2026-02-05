@@ -149,12 +149,14 @@ async def intro(interaction: Interaction, query: str): # 参数名保持一致
     
     # 2. 调用 AI (确保 ai_query 是异步函数)
     answer = await ai_query(prompt, history)
+    answer = answer.replace("Assistant:", "").strip()
 
     # 3. 更新历史记录并保持长度限制
     AI_QUERY_HISTORY.append(f"@{user_name}: {query}\n Assistant: {answer}")
     if len(AI_QUERY_HISTORY) > AI_QUERY_HISTORY_LIMIT:
         AI_QUERY_HISTORY = AI_QUERY_HISTORY[-AI_QUERY_HISTORY_LIMIT:]
 
+    answer = f"> @{user_name}: {query}。\n {answer}"
     # 4. 发送回复
     await interaction.followup.send(answer, ephemeral=False)
 
