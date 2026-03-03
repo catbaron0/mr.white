@@ -12,8 +12,15 @@ import asyncio
 from openai import OpenAI, AsyncOpenAI
 
 
+# for audio generation and chat
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
-a_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
+
+# for image description and chat
+a_client = AsyncOpenAI(
+    api_key=os.getenv("GEMINI_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai"
+)
+CHAT_MODEL = "gemini-2.5-flash"  # 也可用 gpt-4o-mini
 LOG = logging.getLogger(__name__)
 
 
@@ -36,18 +43,27 @@ def gpt_tts_f(text, voice_cfg):
         LOG.error("TTS API 请求超时")
         return None
 
-
-async def gpt_chat(prompt: str) -> str:
+async def ai_chat(model: str, prompt: str, image_url: str = "") -> str:
     """
-    异步调用 OpenAI GPT API 进行对话，输入 prompt，返回 response 字符串
+    异步调用 OpenAI Gemini API 进行对话，输入 prompt，返回 response 字符串
     """
+    messages = [
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": prompt}]
+        }
+    ]
+    if image_url:
+        messages[0]["content"].append(
+                {"type": "image_url", "image_url": {"url": image_url}}
+        )
     try:
-        response = await a_client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt,
+        response = await a_client.chat.completions.create(
+            model=model,
+            messages=messages,
             timeout=10
         )
-        return response.output_text.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         LOG.error(f"Chat API 请求失败: {e}")
         return ""
@@ -69,40 +85,13 @@ async def describe_image(url: str) -> str:
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-    data_url = f"data:image/png;base64,{b64_data}"
+    image_url = f"data:image/png;base64,{b64_data}"
 
     # Step 3: 请求 OpenAI API
-    response = await a_client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "请用一句中文简要描述这张图片。"},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ],
-            }
-        ],
-    )
-    return response.choices[0].message.content.strip()
-
-
-async def _describe_image(url: str) -> str:
-    """
-    输入图片 URL，返回图片的简短描述。
-    """
-    response = await a_client.chat.completions.create(
-        model="gpt-4o-mini",  # 也可用 gpt-4o
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "请用一句中文简要描述这张图片。"},
-                    {"type": "image_url", "image_url": {"url": url}}
-                ],
-            }
-        ],
-    )
+    response = ai_chat(
+        model=CHAT_MODEL,
+        prompt="请用10个字以内简要描述这张图片。",
+        image_url=image_url)
     return response.choices[0].message.content.strip()
 
 
@@ -114,7 +103,7 @@ async def gpt_summary(prompt: str) -> str:
     command += "文字长度控制在100字以内。\n"
     command += "文字如下：\n\n"
     command += prompt
-    return await gpt_chat(command)
+    return await ai_chat(model, command)
 
 
 async def gpt_translate_to_zh(text: str) -> str:
@@ -129,7 +118,7 @@ async def gpt_translate_to_zh(text: str) -> str:
         "原文:\n"
     )
     prompt += text
-    return await gpt_chat(prompt)
+    return await ai_chat(CHAT_MODEL, prompt)
 
 
 async def ai_query(text: str, history: str) -> str:
@@ -144,7 +133,7 @@ async def ai_query(text: str, history: str) -> str:
         f"\n{history}\n\n"
         f"{text}\n"
     )
-    return await gpt_chat(prompt)
+    return await ai_chat(CHAT_MODEL, prompt)
 
 
 

@@ -136,6 +136,12 @@ def _number_to_chinese(s: str) -> str:
     return s
 
 
+def _process_shorten_texts(text: str) -> str:
+    # wwwww
+    text = re.sub(r'w{4,}', '草', text)
+    return text
+
+
 def _replace_special_tokens(text) -> str:
     # process AI
     pattern = r'(?<![A-Za-z])[Aa][Ii](?![A-Za-z])'
@@ -167,6 +173,7 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
     text = _number_to_chinese(text)
     text = _process_punctuation(text)
     text = _replace_special_tokens(text)
+    text = _process_shorten_texts(text)
 
     attachments = message.attachments
     url = ""
@@ -183,7 +190,7 @@ async def process_text_message(que_msg: QueueMessage, default_emoji: dict, custo
             image_count = ""
         if image_count == 2:
             image_count = "两"
-        text += f"\n看这{image_count}张图。\n"
+        text += f"\n\n 看这{image_count}张图。\n"
 
     # if url:
     #     try:
