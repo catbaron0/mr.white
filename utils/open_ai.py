@@ -103,7 +103,7 @@ async def gpt_summary(prompt: str) -> str:
     command += "文字长度控制在100字以内。\n"
     command += "文字如下：\n\n"
     command += prompt
-    return await ai_chat(model, command)
+    return await ai_chat(CHAT_MODEL, command)
 
 
 async def gpt_translate_to_zh(text: str) -> str:
@@ -124,7 +124,8 @@ async def gpt_translate_to_zh(text: str) -> str:
 async def ai_query(text: str, history: str) -> str:
     prompt = (
         "你是一个乐于助人的 AI 助手，能够回答各种各样的问题。\n"
-        "请根据以下提供的历史对话内容，简洁明了地回答用户的问题。\n"
+        "请简洁明了地回答用户的问题。\n"
+        "可以参考历史对话记录。\n"
         "回答时请注意以下几点：\n"
         "- 介绍要适当的简洁易懂。\n"
         "- 不要提示后续对话。\n\n"

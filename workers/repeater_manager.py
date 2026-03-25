@@ -2,6 +2,7 @@
 import asyncio
 from pathlib import Path
 import logging
+import random
 
 import discord
 from discord import Interaction
@@ -13,6 +14,110 @@ from utils.connect import connect_voice_channel
 
 AUDIO_ENTER = Path(__file__).parent.parent / "data" / "kita.mp3"
 IMG_ENTER = Path(__file__).parent.parent / "data" / "kita.png"
+TEXT_ENTER = [
+"(◉ω◉｀)",
+"( ᯣωᯣ )",
+"( ᯣ _ ᯣ )",
+"( ᯣωᯣ )",
+"(¬д¬。) ",
+"(๑👁д👁๑)",
+"(っ・ω・c)",
+"(⚭-⚭ )ｼ",
+"(‘  👁ω👁')",
+"ಠ_ಠ",
+"(ㆆωㆆ)",
+"━(ㅍ_ㅍ)━･･･",
+"(´◑д◐｀)",
+"(´◉ω◉`)",
+"(´◉◞౪◟◉)",
+"(￢_￢) ",
+"(;￢_￢)",
+"( ๑ㆆ ㆆ)",
+"(´◉ ω ◉｀)",
+"(๑¯ํ^¯ํ๑)",
+"(๑˙―˙๑)",
+"( ΦωΦ )",
+"(￣･ω･￣)",
+"( ｡ ･ω･)(･ω･ ｡ )",
+"( 👁‍🗨ω👁‍🗨 )",
+"( 　・　ω　・ 　)ｼ",
+"(<●>ω<●>`)",
+"(°▽°(°▽°)°▽°)",
+"( ˂˃  ‸ ˂˃)",
+"( →_→)",
+"( ㅍ_ㅍ)",
+"(≖ω≖)",
+"( ¯･ω･¯ )",
+"(ーωー)",
+"( ¯•ω•¯ )",
+"┃ω・๑)🔎✨",
+"┃•́ )",
+"壁┃･(ｪ)･)",
+"┃ω・)",
+"|ૂ•̀ω•́ )",
+"┃ω・)",
+"┃電柱┃_･)",
+"|///|･ω|///|",
+"壁┃´｡･д･)",
+"壁┃กｰ̀ωｰ́ )",
+"┃ε:)",
+"┃ ･᷄ω･᷅)",
+"┃ω･)",
+"|ૂ•̀ω•́ )",
+"┃ε:",
+"┃ ᴥ•́ )",
+"|ૂ•ᴗ•⸝⸝)",
+"┃ϖ･ิ)",
+"┃ὤ•᷅๑)",
+"กｰ̀ ｰ́ )ｼﾞｰｯ",
+"┃ｮ’ω’*)ｼﾞｨｰｰｰｰｰｰｰｰｰｰｰｰｰｯ♡",
+"┃･`ω･)ジィー",
+"┃౪꒪ )じぃぃぃ…。",
+"┃กｰ̀ωｰ́ )ｼﾞｰｯ",
+"┃ω･)ｼﾞｰ",
+"┃(ｪ)･ෆ) ｼﾞｨｨｨꕀෆෆෆ",
+"┃･(ｪ)･)じー",
+"┃ω◦) ｼﾞｰ",
+"┃дﾟ)ｼﾞｰ",
+"壁┃_ಠ)ｶﾞﾝﾐﾁｭｰ",
+"┃q･ｪ･*)",
+"ジー|ૂ•̀ω•́ )",
+"┃• ∀•๑)”ｼﾞｰｯ♡",
+"┃qω•˘,,)ｼﾞｰｯ.｡oஇ",
+"▓▓▓┃ｰ̀ωｰ́)ｼﾞｰｯ",
+"壁┃´。・д・)ｼﾞｰ･･･",
+"(⚭-⚭ )",
+"( ¯･ω･¯ )",
+"( ¯•ω•¯ )",
+"(ㆆωㆆ)",
+"(´◉ω◉`)",
+"(¬_¬ )",
+"(눈_눈)",
+"ಠ_ಠ",
+"(ㆆ_ㆆ)",
+"(  ↂ⃝⃓⃙⃚⃘_ↂ⃝⃓⃙⃚⃘)",
+"( ㅍ_ㅍ)",
+"(￣･ω･￣)",
+"|ω・｀)",
+"|⚭‧̫⚭`)",
+"(   ಠ дಠ  )",
+"(* ⊙⊙)",
+"(廿_廿)･･･。",
+"( ≖ ω ≖ )",
+"|ㆆωㆆ)",
+"(≖ω≖)",
+"|д꒪ͧ)…",
+"壁]ก◉ω◉)",
+"( ◉ω◉ )",
+"(＜●＞ω＜●＞)",
+"(‹●›ω‹●›)",
+"(´（●）ω（●）｀)",
+"(●›ω‹●)",
+"(‹●›ω‹●›)",
+"(‹o›Д‹o›)",
+"(≼◉ื≽◟ﾟ;益;◞≼◉ื≽）",
+"（◞≼●≽◟◞౪◟◞≼●≽◟）",
+]
 
 LOG = logging.getLogger(__name__)
 
@@ -52,8 +157,10 @@ class RepeaterManager(commands.Cog):
         # response_content += f"\n✅...复读模块就位: {user_voice_channel.name}"
         # await interaction.edit_original_response(content=response_content)
 
+        # enter message
         await self.repeaters[guild.id].play_audio(AUDIO_ENTER, cleanup=False)
-        await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
+        # await self.repeaters[guild.id].voice_channel.send(file=discord.File(IMG_ENTER))
+        await self.repeaters[guild.id].voice_channel.send(random.choice(TEXT_ENTER))
 
     async def start_repeater(self, interaction: Interaction):
         assert interaction.guild is not None
